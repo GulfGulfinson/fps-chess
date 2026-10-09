@@ -32,12 +32,7 @@ public static class GameSerializer
             SavedAt = DateTimeOffset.Now,
             Variant = game.Variant.ToString(),
             StartFen = game.StartFen,
-            Moves = game.Moves.Select((m, i) => m.ToUci() + game.DuelOutcomes[i] switch
-            {
-                DuelOutcome.AttackerWon => AttackerWonMarker,
-                DuelOutcome.DefenderWon => DefenderWonMarker,
-                _ => "",
-            }).ToList(),
+            Moves = EncodeMoves(game).ToList(),
             White = save.Setup.White.ToString(),
             Black = save.Setup.Black.ToString(),
             AiLevel = save.Setup.AiLevel,
@@ -90,7 +85,9 @@ public static class GameSerializer
         if (setup.AiLevel is < GameSetup.MinAiLevel or > GameSetup.MaxAiLevel)
             throw new InvalidSaveFileException($"AI level {setup.AiLevel} is out of range.");
 
-        var game = ReplayGame(dto, variant);
+        if (dto.StartFen is null || dto.Moves is null)
+            throw new InvalidSaveFileException("The save file is missing the start position or the moves.");
+        var game = Replay(dto.StartFen, variant, dto.Moves);
         var clock = RestoreClock(setup, dto);
 
         if (dto.EndedBy is not null)
@@ -116,24 +113,32 @@ public static class GameSerializer
 
     public static SavedGame LoadFromFile(string path) => Deserialize(File.ReadAllText(path));
 
-    private static Game ReplayGame(SaveFileDto dto, GameVariant variant)
-    {
-        if (dto.StartFen is null || dto.Moves is null)
-            throw new InvalidSaveFileException("The save file is missing the start position or the moves.");
+    /// <summary>The move list as UCI strings, duel captures suffixed with ":A" or ":D". A pending duel is not included.</summary>
+    public static IEnumerable<string> EncodeMoves(Game game) =>
+        game.Moves.Select((m, i) => m.ToUci() + game.DuelOutcomes[i] switch
+        {
+            DuelOutcome.AttackerWon => AttackerWonMarker,
+            DuelOutcome.DefenderWon => DefenderWonMarker,
+            _ => "",
+        });
 
+    /// <summary>Rebuilds a game by playing every encoded move through the rules.</summary>
+    /// <exception cref="InvalidSaveFileException">The start position or a move is invalid.</exception>
+    public static Game Replay(string startFen, GameVariant variant, IReadOnlyList<string> moves)
+    {
         Game game;
         try
         {
-            game = new Game(dto.StartFen, variant);
+            game = new Game(startFen, variant);
         }
         catch (FormatException e)
         {
             throw new InvalidSaveFileException("The start position in the save file is invalid.", e);
         }
 
-        for (var i = 0; i < dto.Moves.Count; i++)
+        for (var i = 0; i < moves.Count; i++)
         {
-            var text = dto.Moves[i];
+            var text = moves[i];
             var (uci, outcome) = text.Length > 2 && text[^2] == ':'
                 ? (text[..^2], text[^2..] switch
                 {
