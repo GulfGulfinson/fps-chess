@@ -32,6 +32,9 @@ public sealed class Game
 
     public bool IsOver => Status != GameStatus.Ongoing;
 
+    /// <summary>The side that resigned or ran out of time; null for every other result.</summary>
+    public PieceColor? ForfeitedBy { get; private set; }
+
     public IEnumerable<Move> LegalMovesFrom(Square from) => _legalMoves.Where(m => m.From == from);
 
     public bool IsLegal(Move move) => !IsOver && _legalMoves.Contains(move);
@@ -69,6 +72,7 @@ public sealed class Game
     {
         if (IsOver) return;
         Status = GameStatus.TimeForfeit;
+        ForfeitedBy = loser;
         // A side with a bare king can never mate, so the flag fall is a draw (FIDE 6.9).
         var opponentHasOnlyKing = Position.Pieces().All(p => p.Piece.Color == loser || p.Piece.Type == PieceType.King);
         Winner = opponentHasOnlyKing ? null : loser.Opponent();
@@ -79,6 +83,7 @@ public sealed class Game
     {
         if (IsOver) return;
         Status = GameStatus.Resignation;
+        ForfeitedBy = loser;
         Winner = loser.Opponent();
         _legalMoves = [];
     }
@@ -88,6 +93,7 @@ public sealed class Game
         var position = Position;
         _legalMoves = position.GenerateLegalMoves();
         Winner = null;
+        ForfeitedBy = null;
 
         if (_legalMoves.Count == 0)
         {
