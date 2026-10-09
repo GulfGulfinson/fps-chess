@@ -59,4 +59,11 @@ public partial class LobbyChannel : Node
 
     [Rpc]
     public void RoomList(string json) => Client?.OnRoomList(json);
+
+    /// <summary>
+    /// Sent every few seconds so proxies do not drop quiet connections
+    /// (Cloudflare closes WebSockets after 100 s without traffic). Clients ignore it.
+    /// </summary>
+    [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered, TransferChannel = 1)]
+    public void Keepalive() { }
 }

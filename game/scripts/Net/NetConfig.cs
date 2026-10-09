@@ -13,6 +13,9 @@ public static class NetConfig
     /// <summary>How long a seat is kept for a player whose connection dropped.</summary>
     public const double ReconnectSeconds = 60;
 
+    /// <summary>Well below Cloudflare's 100 s idle timeout for WebSockets.</summary>
+    public const double KeepaliveSeconds = 20;
+
     /// <summary>How often the server sends duel snapshots and clients send their pose.</summary>
     public const float SyncInterval = 1f / 30f;
 

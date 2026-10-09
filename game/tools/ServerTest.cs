@@ -11,8 +11,9 @@ using Godot;
 namespace FpsChess.Tools;
 
 /// <summary>
-/// Headless integration test of the match server over real WebSockets on localhost.
-///   godot --headless --path game res://tools/ServerTest.tscn
+/// Headless integration test of the match server over real WebSockets.
+///   godot --headless --path game res://tools/ServerTest.tscn                     (starts its own server)
+///   godot --headless --path game res://tools/ServerTest.tscn -- --url wss://...  (tests a deployed server)
 /// Exits with code 0 when every scenario passed, 1 otherwise.
 /// </summary>
 public partial class ServerTest : Node
@@ -21,6 +22,7 @@ public partial class ServerTest : Node
 
     private readonly List<string> _failures = [];
     private int _port;
+    private string _url = "";
     private double _elapsed;
     private Func<double, bool>? _step;
     private readonly Queue<(string Name, Func<double, bool> Step)> _steps = new();
@@ -36,20 +38,31 @@ public partial class ServerTest : Node
 
     public override void _Ready()
     {
-        _port = Random.Shared.Next(30000, 60000);
-        LobbyServer.Start(this, _port, "127.0.0.1", out var error);
-        if (error != Error.Ok)
+        var args = OS.GetCmdlineUserArgs();
+        var urlIndex = Array.IndexOf(args, "--url");
+        if (urlIndex >= 0 && urlIndex + 1 < args.Length)
         {
-            Fail($"server did not start: {error}");
-            Finish();
-            return;
+            _url = args[urlIndex + 1];
+            GD.Print($"[test] against {_url}");
+        }
+        else
+        {
+            _port = Random.Shared.Next(30000, 60000);
+            _url = $"ws://127.0.0.1:{_port}";
+            LobbyServer.Start(this, _port, "127.0.0.1", out var error);
+            if (error != Error.Ok)
+            {
+                Fail($"server did not start: {error}");
+                Finish();
+                return;
+            }
         }
 
         // ---- scenario 1: two humans online
         Then("A and B connect", _ =>
         {
-            _a ??= TestPlayer.Connect(this, _port, "Alice");
-            _b ??= TestPlayer.Connect(this, _port, "Bob");
+            _a ??= TestPlayer.Connect(this, _url, "Alice");
+            _b ??= TestPlayer.Connect(this, _url, "Bob");
             return _a.Welcomed && _b.Welcomed;
         });
         Then("A creates a public room", _ =>
@@ -74,8 +87,10 @@ public partial class ServerTest : Node
             }
             if (_b.Color is null && !_b.JoinRequested)
             {
-                Check(_b.Rooms.Count == 1, $"expected one listed room, got {_b.Rooms.Count}");
-                _roomCode = _b.Rooms[0].Code;
+                // A deployed server may list other people's rooms; ours is the one Alice hosts.
+                var ours = _b.Rooms.FirstOrDefault(r => r.Host == "Alice");
+                Check(ours is not null, $"Alice's room is not listed ({_b.Rooms.Count} rooms)");
+                _roomCode = ours?.Code ?? "";
                 _b.JoinRequested = true;
                 _b.Client.JoinRoom(_roomCode);
             }
@@ -142,7 +157,7 @@ public partial class ServerTest : Node
         });
         Then("B comes back with its token and gets the game state", _ =>
         {
-            _bBack ??= TestPlayer.Connect(this, _port, "Bob");
+            _bBack ??= TestPlayer.Connect(this, _url, "Bob");
             if (!_bBack.Welcomed) return false;
             if (!_bBack.JoinRequested)
             {
@@ -153,7 +168,7 @@ public partial class ServerTest : Node
         });
         Then("a wrong token cannot take a seat", _ =>
         {
-            var intruder = TestPlayer.Connect(this, _port, "Mallory");
+            var intruder = TestPlayer.Connect(this, _url, "Mallory");
             _intruder = intruder;
             return true;
         });
@@ -180,7 +195,7 @@ public partial class ServerTest : Node
         // ---- scenario 2: against the computer, which must fight on its own
         Then("C starts a computer game from a save", _ =>
         {
-            _c ??= TestPlayer.Connect(this, _port, "Carol");
+            _c ??= TestPlayer.Connect(this, _url, "Carol");
             if (!_c.Welcomed) return false;
             if (!_c.CreatedRequest)
             {
@@ -275,9 +290,9 @@ public partial class ServerTest : Node
         private DuelRole _role;
         private double _sincePose;
 
-        public static TestPlayer Connect(Node parent, int port, string name)
+        public static TestPlayer Connect(Node parent, string url, string name)
         {
-            var client = NetClient.Connect(parent, $"ws://127.0.0.1:{port}", name);
+            var client = NetClient.Connect(parent, url, name);
             var player = new TestPlayer { Client = client };
             client.Welcomed += () => player.Welcomed = true;
             client.Failed += message => player.Errors.Add(message);

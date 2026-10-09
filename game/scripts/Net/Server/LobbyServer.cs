@@ -16,6 +16,7 @@ public partial class LobbyServer : Node, ILobbyServer
     private readonly Dictionary<string, MatchRoom> _rooms = [];
     private LobbyChannel _lobby = null!;
     private Node _roomsNode = null!;
+    private double _sinceKeepalive;
 
     public LobbyServer() => Name = "Server";
 
@@ -42,6 +43,13 @@ public partial class LobbyServer : Node, ILobbyServer
     }
 
     public override void _ExitTree() => NetHost.Close(this);
+
+    public override void _Process(double delta)
+    {
+        if ((_sinceKeepalive += delta) < NetConfig.KeepaliveSeconds) return;
+        _sinceKeepalive = 0;
+        foreach (var peer in _names.Keys) _lobby.RpcId(peer, LobbyChannel.MethodName.Keepalive);
+    }
 
     public void OnHello(int peer, int protocol, string name)
     {

@@ -1,0 +1,9 @@
+/home/pschneid/websites/chess.gulfgulfinson.de/shared/logs/*.log {
+    su pschneid webdeploy
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
