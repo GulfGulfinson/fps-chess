@@ -1,0 +1,298 @@
+using Chess.Core;
+using Chess.Core.Duels;
+using Chess.Core.Persistence;
+using FpsChess.Arena;
+using FpsChess.Duel;
+using FpsChess.Net;
+using FpsChess.Net.Client;
+using FpsChess.Net.Server;
+using Godot;
+
+namespace FpsChess.Tools;
+
+/// <summary>
+/// Headless integration test of the match server over real WebSockets on localhost.
+///   godot --headless --path game res://tools/ServerTest.tscn
+/// Exits with code 0 when every scenario passed, 1 otherwise.
+/// </summary>
+public partial class ServerTest : Node
+{
+    private const double TimeoutSeconds = 90;
+
+    private readonly List<string> _failures = [];
+    private int _port;
+    private double _elapsed;
+    private Func<double, bool>? _step;
+    private readonly Queue<(string Name, Func<double, bool> Step)> _steps = new();
+    private string _currentStep = "";
+
+    private TestPlayer _a = null!;
+    private TestPlayer _b = null!;
+    private TestPlayer _c = null!;
+    private string _roomCode = "";
+    private double _sinceShot;
+
+    public override void _Ready()
+    {
+        _port = Random.Shared.Next(30000, 60000);
+        LobbyServer.Start(this, _port, "127.0.0.1", out var error);
+        if (error != Error.Ok)
+        {
+            Fail($"server did not start: {error}");
+            Finish();
+            return;
+        }
+
+        // ---- scenario 1: two humans online
+        Then("A and B connect", _ =>
+        {
+            _a ??= TestPlayer.Connect(this, _port, "Alice");
+            _b ??= TestPlayer.Connect(this, _port, "Bob");
+            return _a.Welcomed && _b.Welcomed;
+        });
+        Then("A creates a public room", _ =>
+        {
+            if (!_a.CreatedRequest)
+            {
+                _a.CreatedRequest = true;
+                _a.Client.CreateRoom(new RoomSettings { PlayerName = "Alice", HumanColor = "White", Public = true });
+            }
+            return _a.Color is not null;
+        });
+        Then("B finds the room in the list and joins", _ =>
+        {
+            if (_b.Rooms is null)
+            {
+                if (!_b.ListRequested)
+                {
+                    _b.ListRequested = true;
+                    _b.Client.RequestRoomList();
+                }
+                return false;
+            }
+            if (_b.Color is null && !_b.JoinRequested)
+            {
+                Check(_b.Rooms.Count == 1, $"expected one listed room, got {_b.Rooms.Count}");
+                _roomCode = _b.Rooms[0].Code;
+                _b.JoinRequested = true;
+                _b.Client.JoinRoom(_roomCode);
+            }
+            return _b.Color is not null && _a.States > 0 && _b.States > 0 && _a.Game is not null && _b.Game is not null;
+        });
+        Then("colours are assigned", _ =>
+        {
+            Check(_a.Color == PieceColor.White && _b.Color == PieceColor.Black, $"colours were {_a.Color}/{_b.Color}");
+            return true;
+        });
+        Then("moves reach both players", _ =>
+        {
+            if (_a.Moves.Count == 0 && !_a.Sent.Contains("e2e4")) _a.Submit("e2e4");
+            if (_a.Moves.Count == 1 && !_b.Sent.Contains("d7d5")) _b.Submit("d7d5");
+            return _a.Moves.Count == 2 && _b.Moves.Count == 2;
+        });
+        Then("a move out of turn is rejected", _ =>
+        {
+            if (!_b.Sent.Contains("e7e5"))
+            {
+                _b.Submit("e7e5");
+                return false;
+            }
+            return _b.Notices.Count > 0;
+        });
+        Then("a capture starts a duel for both", _ =>
+        {
+            if (!_a.Sent.Contains("e4d5")) _a.Submit("e4d5");
+            return _a.Duel is not null && _b.Duel is not null;
+        });
+        Then("the attacker shoots the defender and wins", delta =>
+        {
+            var attackerAt = BoardGeometry.Center(Square.Parse("e4"));
+            var defenderAt = BoardGeometry.Center(Square.Parse("d5"));
+            _a.SendPose(attackerAt);
+            _b.SendPose(defenderAt);
+            _sinceShot += delta;
+            if (_sinceShot > 0.3)
+            {
+                _sinceShot = 0;
+                var height = PieceModels.Height(PieceType.Pawn);
+                var origin = attackerAt + Vector3.Up * Ballistics.EyeHeight(height);
+                var target = defenderAt + Vector3.Up * Ballistics.ChestHeight(height);
+                _a.Fire(origin, [(target - origin).Normalized()]);
+            }
+            return _a.DuelEnded is not null && _b.DuelEnded is not null && _a.Moves.Count == 3 && _b.Moves.Count == 3;
+        });
+        Then("the duel result is shared and applied", _ =>
+        {
+            Check(_a.DuelEnded == (int)DuelOutcome.AttackerWon, $"duel outcome was {_a.DuelEnded}");
+            Check(_b.Moves[2] == ("e4d5", (int)DuelOutcome.AttackerWon), $"B saw {_b.Moves[2]}");
+            Check(_b.DamageTaken > 0, "B never saw the damage");
+            return true;
+        });
+        Then("resigning ends the game for both", _ =>
+        {
+            if (!_b.Resigned)
+            {
+                _b.Resigned = true;
+                _b.Channel.RpcId(1, MatchChannel.MethodName.Resign);
+            }
+            return _a.LastState?.ForfeitStatus == "Resignation" && _b.LastState?.ForfeitStatus == "Resignation";
+        });
+
+        // ---- scenario 2: against the computer, which must fight on its own
+        Then("C starts a computer game from a save", _ =>
+        {
+            _c ??= TestPlayer.Connect(this, _port, "Carol");
+            if (!_c.Welcomed) return false;
+            if (!_c.CreatedRequest)
+            {
+                _c.CreatedRequest = true;
+                var setup = new GameSetup(PlayerKind.Computer, PlayerKind.Human, 4, null, GameVariant.Duel);
+                var save = GameSerializer.Serialize(new SavedGame(setup, new Game("4k3/8/8/3q4/8/8/3R4/4K3 w - - 0 1", GameVariant.Duel), null));
+                _c.Client.CreateRoom(new RoomSettings { PlayerName = "Carol", VsComputer = true, SaveJson = save, Public = false });
+            }
+            return _c.Game is not null;
+        });
+        Then("the computer captures and fights the duel to the end", _ =>
+        {
+            if (_c.Duel is not null) _c.SendPose(BoardGeometry.Center(Square.Parse("d5")));
+            return _c.DuelEnded is not null && _c.Moves.Count == 1;
+        });
+        Then("the computer's bot actually shot", _ =>
+        {
+            Check(_c.DamageTaken > 0 || _c.DuelEnded == (int)DuelOutcome.DefenderWon, "the bot never hit an opponent standing still");
+            return true;
+        });
+
+        NextStep();
+    }
+
+    private void Then(string name, Func<double, bool> step) => _steps.Enqueue((name, step));
+
+    private void NextStep()
+    {
+        if (_steps.Count == 0)
+        {
+            Finish();
+            return;
+        }
+        (_currentStep, _step) = _steps.Dequeue();
+        GD.Print($"[test] {_currentStep}");
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_step is null) return;
+        _elapsed += delta;
+        if (_elapsed > TimeoutSeconds)
+        {
+            Fail($"timed out in step '{_currentStep}'");
+            Finish();
+            return;
+        }
+        if (_step(delta)) NextStep();
+    }
+
+    private void Check(bool condition, string message)
+    {
+        if (!condition) Fail($"{_currentStep}: {message}");
+    }
+
+    private void Fail(string message)
+    {
+        _failures.Add(message);
+        GD.PrintErr($"[test] FAIL {message}");
+    }
+
+    private void Finish()
+    {
+        _step = null;
+        GD.Print(_failures.Count == 0 ? "[test] ALL PASSED" : $"[test] {_failures.Count} FAILED");
+        GetTree().Quit(_failures.Count == 0 ? 0 : 1);
+    }
+
+    /// <summary>A scripted player: a real <see cref="NetClient"/> plus a recorder for everything the server sends.</summary>
+    private sealed class TestPlayer : IMatchClient
+    {
+        public NetClient Client { get; private init; } = null!;
+        public MatchChannel Channel => Client.Channel!;
+        public bool Welcomed;
+        public bool CreatedRequest;
+        public bool ListRequested;
+        public bool JoinRequested;
+        public bool Resigned;
+        public PieceColor? Color;
+        public List<RoomListEntry>? Rooms;
+        public int States;
+        public MatchStateDto? LastState;
+        public Game? Game;
+        public readonly List<(string Uci, int Outcome)> Moves = [];
+        public readonly List<string> Sent = [];
+        public readonly List<string> Notices = [];
+        public DuelStartDto? Duel;
+        public int? DuelEnded;
+        public float DamageTaken;
+        private DuelRole _role;
+        private double _sincePose;
+
+        public static TestPlayer Connect(Node parent, int port, string name)
+        {
+            var client = NetClient.Connect(parent, $"ws://127.0.0.1:{port}", name);
+            var player = new TestPlayer { Client = client };
+            client.Welcomed += () => player.Welcomed = true;
+            client.Failed += message => GD.PrintErr($"[test] {name} failed: {message}");
+            client.RoomJoined += (_, color) =>
+            {
+                player.Color = color;
+                client.Channel!.Client = player;
+            };
+            client.RoomListReceived += rooms => player.Rooms = rooms;
+            return player;
+        }
+
+        public void Submit(string uci)
+        {
+            Sent.Add(uci);
+            Channel.RpcId(1, MatchChannel.MethodName.SubmitMove, uci);
+        }
+
+        public void SendPose(Vector3 position)
+        {
+            if (Duel is null || DuelEnded is not null) return;
+            if ((_sincePose += 1.0 / 60.0) < NetConfig.SyncInterval) return;
+            _sincePose = 0;
+            Channel.RpcId(1, MatchChannel.MethodName.DuelInput, position, 0f, 0f);
+        }
+
+        public void Fire(Vector3 origin, Vector3[] directions) => Channel.RpcId(1, MatchChannel.MethodName.Fire, origin, directions);
+
+        public void OnState(string json)
+        {
+            States++;
+            LastState = NetJson.Read<MatchStateDto>(json);
+            Game = GameSerializer.Replay(LastState.StartFen, GameVariant.Duel, LastState.Moves);
+        }
+
+        public void OnMovePlayed(string uci, int outcome) => Moves.Add((uci, outcome));
+
+        public void OnDuelStarted(string json)
+        {
+            Duel = NetJson.Read<DuelStartDto>(json);
+            _role = Enum.Parse<PieceColor>(Duel.AttackerColor) == Color ? DuelRole.Attacker : DuelRole.Defender;
+        }
+
+        public void OnDuelSnapshot(Vector3 attacker, float attackerYaw, float attackerPitch, Vector3 defender, float defenderYaw, float defenderPitch, float[] stats) { }
+        public void OnShotFired(int role, Vector3 origin, Vector3[] ends) { }
+
+        public void OnDamaged(int role, float amount)
+        {
+            if ((DuelRole)role == _role) DamageTaken += amount;
+        }
+
+        public void OnGrenadeThrown(int role, Vector3 origin, Vector3 velocity) { }
+        public void OnGrenadeExploded(Vector3 position) { }
+        public void OnDuelEnded(int outcome) => DuelEnded = outcome;
+        public void OnSaveData(string json) { }
+        public void OnNotice(string text) => Notices.Add(text);
+        public void OnClockSync(long whiteMs, long blackMs) { }
+    }
+}
