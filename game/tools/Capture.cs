@@ -1,5 +1,6 @@
 using Chess.Core;
 using FpsChess.App;
+using FpsChess.Fps;
 using Godot;
 
 namespace FpsChess.Tools;
@@ -13,12 +14,15 @@ public partial class Capture : Node
     private Main _main = null!;
     private string _out = "capture.png";
     private int _frames = 90;
+    private readonly Queue<string> _clicks = new();
+    private int _frame;
 
     public override void _Ready()
     {
         var args = ParseArgs(OS.GetCmdlineUserArgs());
         _out = args.GetValueOrDefault("out", _out);
         if (args.TryGetValue("frames", out var frames)) _frames = int.Parse(frames);
+        foreach (var square in args.GetValueOrDefault("clicks", "").Split(',', StringSplitOptions.RemoveEmptyEntries)) _clicks.Enqueue(square);
 
         _main = GD.Load<PackedScene>("res://scenes/Main.tscn").Instantiate<Main>();
         AddChild(_main);
@@ -44,6 +48,21 @@ public partial class Capture : Node
 
     public override void _Process(double delta)
     {
+        // FPS mode: every 40 frames aim the camera at the next square and left-click, like a player would.
+        if (++_frame % 40 == 0 && _clicks.Count > 0 && _main.FindChild("Player", true, false) is FpsPlayer player)
+        {
+            var square = Square.Parse(_clicks.Dequeue());
+            var piece = _main.Session!.Game.Position.PieceAt(square);
+            var target = BoardGeometry.Center(square) + new Vector3(0, piece is null ? 0 : 0.8f, 0);
+            Input.MouseMode = Input.MouseModeEnum.Captured;
+            player.Camera.LookAt(target);
+            GetTree().CreateTimer(0.1).Timeout += () =>
+            {
+                Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true });
+                Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = false });
+            };
+        }
+
         if (--_frames > 0) return;
         var image = GetViewport().GetTexture().GetImage();
         image.SavePng(_out);
