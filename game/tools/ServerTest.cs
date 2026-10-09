@@ -14,11 +14,12 @@ namespace FpsChess.Tools;
 /// Headless integration test of the match server over real WebSockets.
 ///   godot --headless --path game res://tools/ServerTest.tscn                     (starts its own server)
 ///   godot --headless --path game res://tools/ServerTest.tscn -- --url wss://...  (tests a deployed server)
+///   add --idle 130 to also check that a silent connection survives proxies' idle timeouts
 /// Exits with code 0 when every scenario passed, 1 otherwise.
 /// </summary>
 public partial class ServerTest : Node
 {
-    private const double TimeoutSeconds = 90;
+    private double _timeoutSeconds = 90;
 
     private readonly List<string> _failures = [];
     private int _port;
@@ -56,6 +57,25 @@ public partial class ServerTest : Node
                 Finish();
                 return;
             }
+        }
+
+        var idleIndex = Array.IndexOf(args, "--idle");
+        if (idleIndex >= 0 && idleIndex + 1 < args.Length && double.TryParse(args[idleIndex + 1], out var idleSeconds))
+        {
+            _timeoutSeconds += idleSeconds;
+            TestPlayer? idler = null;
+            var idleFor = 0.0;
+            Then($"a silent connection survives {idleSeconds:0} s", delta =>
+            {
+                idler ??= TestPlayer.Connect(this, _url, "Idle");
+                if (!idler.Welcomed) return false;
+                if (idler.Errors.Count > 0 || idler.Disconnected)
+                {
+                    Fail($"the idle connection dropped after {idleFor:0} s");
+                    return true;
+                }
+                return (idleFor += delta) >= idleSeconds;
+            });
         }
 
         // ---- scenario 1: two humans online
@@ -237,7 +257,7 @@ public partial class ServerTest : Node
     {
         if (_step is null) return;
         _elapsed += delta;
-        if (_elapsed > TimeoutSeconds)
+        if (_elapsed > _timeoutSeconds)
         {
             Fail($"timed out in step '{_currentStep}'");
             Finish();
@@ -275,6 +295,7 @@ public partial class ServerTest : Node
         public bool JoinRequested;
         public bool Resigned;
         public bool Dropped;
+        public bool Disconnected;
         public readonly List<string> Errors = [];
         public PieceColor? Color;
         public List<RoomListEntry>? Rooms;
@@ -302,6 +323,7 @@ public partial class ServerTest : Node
                 client.Channel!.Client = player;
             };
             client.RoomListReceived += rooms => player.Rooms = rooms;
+            client.Disconnected += () => player.Disconnected = true;
             return player;
         }
 
