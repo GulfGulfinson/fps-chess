@@ -11,6 +11,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chess.Core.Tests", "tests\Chess.Core.Tests\Chess.Core.Tests.csproj", "{D046F611-F6BD-42DC-B38F-31167A24494B}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "game", "game", "{AE49D761-A782-2099-29A5-159B937B43CB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chess.Game", "game\Chess.Game.csproj", "{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -45,6 +49,18 @@ Global
 		{D046F611-F6BD-42DC-B38F-31167A24494B}.Release|x64.Build.0 = Release|Any CPU
 		{D046F611-F6BD-42DC-B38F-31167A24494B}.Release|x86.ActiveCfg = Release|Any CPU
 		{D046F611-F6BD-42DC-B38F-31167A24494B}.Release|x86.Build.0 = Release|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Debug|x64.Build.0 = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Debug|x86.Build.0 = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Release|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Release|Any CPU.Build.0 = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Release|x64.ActiveCfg = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Release|x64.Build.0 = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Release|x86.ActiveCfg = Debug|Any CPU
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F}.Release|x86.Build.0 = Debug|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -52,5 +68,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{62055198-1303-4D1E-8B40-92664BD399A3} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{D046F611-F6BD-42DC-B38F-31167A24494B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{EDAF80E7-3547-4307-BCE1-7DAA1F88B11F} = {AE49D761-A782-2099-29A5-159B937B43CB}
 	EndGlobalSection
 EndGlobal

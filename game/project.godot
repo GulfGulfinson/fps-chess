@@ -1,0 +1,26 @@
+; Engine configuration file.
+; Edited by hand; the Godot editor may reformat it.
+
+config_version=5
+
+[application]
+
+config/name="FPS Chess"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[dotnet]
+
+project/assembly_name="Chess.Game"
+project/solution_directory="../"
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2

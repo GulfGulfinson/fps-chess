@@ -1,0 +1,17 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <RootNamespace>FpsChess</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Let Godot host the game on a newer .NET runtime when .NET 8 itself is not installed. -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../src/Chess.Core/Chess.Core.csproj" />
+  </ItemGroup>
+
+</Project>
