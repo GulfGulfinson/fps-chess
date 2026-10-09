@@ -10,4 +10,7 @@ public enum GameStatus
     InsufficientMaterial,
     TimeForfeit,
     Resignation,
+
+    /// <summary>Duel variant only: an exposed king was captured and lost its duel.</summary>
+    KingCaptured,
 }

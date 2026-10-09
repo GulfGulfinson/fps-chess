@@ -3,22 +3,33 @@ namespace Chess.Core;
 /// <summary>
 /// A game in progress: the move history, the current position and the result.
 /// Only legal moves are accepted. Draws by repetition and the fifty-move rule are applied automatically.
+/// In the <see cref="GameVariant.Duel"/> variant a capture waits in <see cref="PendingDuel"/> until
+/// <see cref="ResolveDuel"/> reports who won the fight.
 /// </summary>
 public sealed class Game
 {
     private readonly List<Position> _positions = [];
     private readonly List<Move> _moves = [];
     private readonly List<string> _sanMoves = [];
+    private readonly List<DuelOutcome?> _duelOutcomes = [];
     private List<Move> _legalMoves = [];
 
-    public Game(string startFen = Position.StartFen)
+    public Game(string startFen = Position.StartFen, GameVariant variant = GameVariant.Classic)
     {
         StartFen = startFen;
-        _positions.Add(Position.FromFen(startFen));
+        Variant = variant;
+        _positions.Add(Position.FromFen(startFen, allowExposedKing: variant == GameVariant.Duel));
         Refresh();
     }
 
     public string StartFen { get; }
+    public GameVariant Variant { get; }
+
+    /// <summary>The capture currently being fought out, if any. No move is accepted until it is resolved.</summary>
+    public PendingDuel? PendingDuel { get; private set; }
+
+    /// <summary>Per move: the duel result for captures in the duel variant, otherwise null.</summary>
+    public IReadOnlyList<DuelOutcome?> DuelOutcomes => _duelOutcomes;
     public Position Position => _positions[^1];
     public IReadOnlyList<Move> Moves => _moves;
     public IReadOnlyList<string> SanMoves => _sanMoves;
@@ -37,17 +48,61 @@ public sealed class Game
 
     public IEnumerable<Move> LegalMovesFrom(Square from) => _legalMoves.Where(m => m.From == from);
 
-    public bool IsLegal(Move move) => !IsOver && _legalMoves.Contains(move);
+    public bool IsLegal(Move move) => !IsOver && PendingDuel is null && _legalMoves.Contains(move);
 
     public bool TryMakeMove(Move move)
     {
         if (!IsLegal(move)) return false;
 
+        if (Variant == GameVariant.Duel && Position.IsCapture(move))
+        {
+            PendingDuel = PendingDuel.Describe(Position, move);
+            _legalMoves = [];
+            return true;
+        }
+
+        Complete(move, null);
+        return true;
+    }
+
+    public void ResolveDuel(DuelOutcome outcome)
+    {
+        if (PendingDuel is not { } duel) throw new InvalidOperationException("There is no duel to resolve.");
+        PendingDuel = null;
+
+        if (outcome == DuelOutcome.AttackerWon)
+        {
+            Complete(duel.Move, outcome);
+            return;
+        }
+
+        // Check marks describe the position after a successful capture, so they do not apply here.
+        _sanMoves.Add(Notation.ToSan(Position, duel.Move).TrimEnd('+', '#') + " \u2717");
+        _moves.Add(duel.Move);
+        _duelOutcomes.Add(outcome);
+        _positions.Add(Position.ApplyFailedCapture(duel.Move));
+        Refresh();
+    }
+
+    private void Complete(Move move, DuelOutcome? outcome)
+    {
+        var capturesKing = Position.PieceAt(move.To)?.Type == PieceType.King;
+        var mover = Position.SideToMove;
+
         _sanMoves.Add(Notation.ToSan(Position, move));
         _moves.Add(move);
+        _duelOutcomes.Add(outcome);
         _positions.Add(Position.Apply(move));
+
+        if (capturesKing)
+        {
+            Status = GameStatus.KingCaptured;
+            Winner = mover;
+            ForfeitedBy = null;
+            _legalMoves = [];
+            return;
+        }
         Refresh();
-        return true;
     }
 
     public void MakeMove(Move move)
@@ -56,7 +111,7 @@ public sealed class Game
             throw new InvalidOperationException($"Illegal move {move} in position {Position.ToFen()}.");
     }
 
-    public bool CanUndo => _moves.Count > 0;
+    public bool CanUndo => _moves.Count > 0 && PendingDuel is null;
 
     /// <summary>Takes back the last move. Also clears a timeout or resignation result.</summary>
     public void Undo()
@@ -64,6 +119,7 @@ public sealed class Game
         if (!CanUndo) throw new InvalidOperationException("There is no move to undo.");
         _moves.RemoveAt(_moves.Count - 1);
         _sanMoves.RemoveAt(_sanMoves.Count - 1);
+        _duelOutcomes.RemoveAt(_duelOutcomes.Count - 1);
         _positions.RemoveAt(_positions.Count - 1);
         Refresh();
     }
@@ -71,6 +127,7 @@ public sealed class Game
     public void ForfeitOnTime(PieceColor loser)
     {
         if (IsOver) return;
+        PendingDuel = null;
         Status = GameStatus.TimeForfeit;
         ForfeitedBy = loser;
         // A side with a bare king can never mate, so the flag fall is a draw (FIDE 6.9).
@@ -82,6 +139,7 @@ public sealed class Game
     public void Resign(PieceColor loser)
     {
         if (IsOver) return;
+        PendingDuel = null;
         Status = GameStatus.Resignation;
         ForfeitedBy = loser;
         Winner = loser.Opponent();
@@ -92,6 +150,7 @@ public sealed class Game
     {
         var position = Position;
         _legalMoves = position.GenerateLegalMoves();
+        if (Variant == GameVariant.Duel) _legalMoves = _legalMoves.Union(position.GenerateKingCaptures()).ToList();
         Winner = null;
         ForfeitedBy = null;
 

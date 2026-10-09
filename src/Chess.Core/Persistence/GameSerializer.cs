@@ -10,7 +10,9 @@ namespace Chess.Core.Persistence;
 /// </summary>
 public static class GameSerializer
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
+    private const string AttackerWonMarker = ":A";
+    private const string DefenderWonMarker = ":D";
 
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -22,12 +24,20 @@ public static class GameSerializer
     public static string Serialize(SavedGame save)
     {
         var game = save.Game;
+        if (game.PendingDuel is not null) throw new InvalidOperationException("Cannot save while a duel is being fought.");
+
         var dto = new SaveFileDto
         {
             Version = CurrentVersion,
             SavedAt = DateTimeOffset.Now,
+            Variant = game.Variant.ToString(),
             StartFen = game.StartFen,
-            Moves = game.Moves.Select(m => m.ToUci()).ToList(),
+            Moves = game.Moves.Select((m, i) => m.ToUci() + game.DuelOutcomes[i] switch
+            {
+                DuelOutcome.AttackerWon => AttackerWonMarker,
+                DuelOutcome.DefenderWon => DefenderWonMarker,
+                _ => "",
+            }).ToList(),
             White = save.Setup.White.ToString(),
             Black = save.Setup.Black.ToString(),
             AiLevel = save.Setup.AiLevel,
@@ -65,20 +75,22 @@ public static class GameSerializer
         }
 
         if (dto is null) throw new InvalidSaveFileException("The save file is empty.");
-        if (dto.Version != CurrentVersion)
+        if (dto.Version is < 1 or > CurrentVersion)
             throw new InvalidSaveFileException($"Unsupported save file version {dto.Version}.");
 
+        var variant = dto.Variant is null ? GameVariant.Classic : ParseEnum<GameVariant>(dto.Variant, "variant");
         var setup = new GameSetup(
             ParseEnum<PlayerKind>(dto.White, "white"),
             ParseEnum<PlayerKind>(dto.Black, "black"),
             dto.AiLevel,
             dto is { InitialMs: { } initial, IncrementMs: { } increment }
                 ? new TimeControl(TimeSpan.FromMilliseconds(initial), TimeSpan.FromMilliseconds(increment))
-                : null);
+                : null,
+            variant);
         if (setup.AiLevel is < GameSetup.MinAiLevel or > GameSetup.MaxAiLevel)
             throw new InvalidSaveFileException($"AI level {setup.AiLevel} is out of range.");
 
-        var game = ReplayGame(dto);
+        var game = ReplayGame(dto, variant);
         var clock = RestoreClock(setup, dto);
 
         if (dto.EndedBy is not null)
@@ -104,7 +116,7 @@ public static class GameSerializer
 
     public static SavedGame LoadFromFile(string path) => Deserialize(File.ReadAllText(path));
 
-    private static Game ReplayGame(SaveFileDto dto)
+    private static Game ReplayGame(SaveFileDto dto, GameVariant variant)
     {
         if (dto.StartFen is null || dto.Moves is null)
             throw new InvalidSaveFileException("The save file is missing the start position or the moves.");
@@ -112,7 +124,7 @@ public static class GameSerializer
         Game game;
         try
         {
-            game = new Game(dto.StartFen);
+            game = new Game(dto.StartFen, variant);
         }
         catch (FormatException e)
         {
@@ -121,17 +133,32 @@ public static class GameSerializer
 
         for (var i = 0; i < dto.Moves.Count; i++)
         {
+            var text = dto.Moves[i];
+            var (uci, outcome) = text.Length > 2 && text[^2] == ':'
+                ? (text[..^2], text[^2..] switch
+                {
+                    AttackerWonMarker => DuelOutcome.AttackerWon,
+                    DefenderWonMarker => DuelOutcome.DefenderWon,
+                    _ => throw new InvalidSaveFileException($"Move {i + 1} '{text}' has an unknown duel result."),
+                })
+                : (text, (DuelOutcome?)null);
+
             Move move;
             try
             {
-                move = Move.ParseUci(dto.Moves[i]);
+                move = Move.ParseUci(uci);
             }
             catch (FormatException e)
             {
-                throw new InvalidSaveFileException($"Move {i + 1} '{dto.Moves[i]}' is malformed.", e);
+                throw new InvalidSaveFileException($"Move {i + 1} '{text}' is malformed.", e);
             }
             if (!game.TryMakeMove(move))
-                throw new InvalidSaveFileException($"Move {i + 1} '{dto.Moves[i]}' is illegal.");
+                throw new InvalidSaveFileException($"Move {i + 1} '{text}' is illegal.");
+
+            // A duel result is required exactly when the move started a duel.
+            if ((game.PendingDuel is null) != (outcome is null))
+                throw new InvalidSaveFileException($"Move {i + 1} '{text}' does not match its duel result.");
+            if (outcome is { } result) game.ResolveDuel(result);
         }
         return game;
     }
@@ -160,6 +187,7 @@ public static class GameSerializer
     {
         public int Version { get; set; }
         public DateTimeOffset SavedAt { get; set; }
+        public string? Variant { get; set; }
         public string? StartFen { get; set; }
         public List<string>? Moves { get; set; }
         public string? White { get; set; }

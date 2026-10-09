@@ -44,18 +44,27 @@ public sealed partial class Position
         }
     }
 
-    public Square KingSquare(PieceColor color)
+    public Square KingSquare(PieceColor color) =>
+        TryKingSquare(color) ?? throw new InvalidOperationException($"No {color} king on the board.");
+
+    /// <summary>The king's square, or null once it has been captured (duel variant only).</summary>
+    public Square? TryKingSquare(PieceColor color)
     {
         for (var i = 0; i < 64; i++)
         {
             if (_board[i] is { Type: PieceType.King } piece && piece.Color == color) return Square.FromIndex(i);
         }
-        throw new InvalidOperationException($"No {color} king on the board.");
+        return null;
     }
 
-    public bool IsInCheck(PieceColor color) => IsSquareAttacked(KingSquare(color), color.Opponent());
+    public bool IsInCheck(PieceColor color) =>
+        TryKingSquare(color) is { } king && IsSquareAttacked(king, color.Opponent());
 
-    public static Position FromFen(string fen)
+    /// <param name="allowExposedKing">
+    /// Accept positions where the side not to move is in check. They are illegal in classic chess but
+    /// arise in the duel variant after a lost capture.
+    /// </param>
+    public static Position FromFen(string fen, bool allowExposedKing = false)
     {
         var parts = fen.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 6) throw new FormatException($"FEN must have 6 fields: '{fen}'.");
@@ -93,7 +102,7 @@ public sealed partial class Position
             throw new FormatException($"Invalid fullmove number '{parts[5]}'.");
 
         var position = new Position(board, side, castling, enPassant, halfmove, fullmove);
-        position.Validate();
+        position.Validate(allowExposedKing);
         return position;
     }
 
@@ -124,7 +133,7 @@ public sealed partial class Position
         return board;
     }
 
-    private void Validate()
+    private void Validate(bool allowExposedKing)
     {
         foreach (var color in new[] { PieceColor.White, PieceColor.Black })
         {
@@ -133,7 +142,7 @@ public sealed partial class Position
         }
         if (Pieces().Any(p => p.Piece.Type == PieceType.Pawn && p.Square.Rank is 0 or 7))
             throw new FormatException("Pawns cannot stand on the first or last rank.");
-        if (IsInCheck(SideToMove.Opponent()))
+        if (!allowExposedKing && IsInCheck(SideToMove.Opponent()))
             throw new FormatException("The side not to move is in check.");
     }
 
@@ -226,6 +235,19 @@ public sealed partial class Position
         var fullmove = SideToMove == PieceColor.Black ? FullmoveNumber + 1 : FullmoveNumber;
 
         return new Position(board, SideToMove.Opponent(), castling, enPassant, halfmove, fullmove);
+    }
+
+    /// <summary>
+    /// Duel variant: the capturing piece lost its duel. It disappears from its square, the defender stays,
+    /// and the turn passes as if a move had been played.
+    /// </summary>
+    public Position ApplyFailedCapture(Move move)
+    {
+        if (_board[move.From.Index] is null) throw new InvalidOperationException($"No piece on {move.From}.");
+        var board = (Piece?[])_board.Clone();
+        board[move.From.Index] = null;
+        var fullmove = SideToMove == PieceColor.Black ? FullmoveNumber + 1 : FullmoveNumber;
+        return new Position(board, SideToMove.Opponent(), Castling & ~CastlingLostBy(move.From), null, 0, fullmove);
     }
 
     private static CastlingRights CastlingLostBy(Square square) => square.Index switch

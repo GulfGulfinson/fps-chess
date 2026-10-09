@@ -30,7 +30,7 @@ public sealed class GameSession : IDisposable
         Func<Position, CancellationToken, Move> chooseComputerMove, TimeSpan minimumThinkTime)
     {
         Setup = setup;
-        Game = game ?? new Game();
+        Game = game ?? new Game(Position.StartFen, setup.Variant);
         Clock = clock ?? (setup.TimeControl is { } tc ? new ChessClock(tc.Initial, tc.Increment) : null);
         _chooseComputerMove = chooseComputerMove;
         _minimumThinkTime = minimumThinkTime;
@@ -47,10 +47,16 @@ public sealed class GameSession : IDisposable
     public bool Paused { get; set; }
 
     public PieceColor Turn => Game.Position.SideToMove;
-    public bool IsHumanTurn => !Game.IsOver && Setup.PlayerFor(Turn) == PlayerKind.Human;
+    public bool IsHumanTurn => !Game.IsOver && Game.PendingDuel is null && Setup.PlayerFor(Turn) == PlayerKind.Human;
     public bool IsComputerThinking => _computerTask is not null;
 
     public event Action<PlayedMove>? MovePlayed;
+
+    /// <summary>
+    /// Duel variant: a capture was chosen and must be fought out. The game and the clock wait until
+    /// <see cref="ResolveDuel"/>; <see cref="MovePlayed"/> follows with the outcome.
+    /// </summary>
+    public event Action<PendingDuel>? DuelStarted;
     public event Action? GameEnded;
 
     /// <summary>Raised after undo: views should redraw the whole board from <see cref="Game"/>.</summary>
@@ -65,7 +71,7 @@ public sealed class GameSession : IDisposable
 
     public void Update(TimeSpan elapsed)
     {
-        if (Game.IsOver || Paused) return;
+        if (Game.IsOver || Paused || Game.PendingDuel is not null) return;
 
         if (Clock is not null)
         {
@@ -91,8 +97,12 @@ public sealed class GameSession : IDisposable
         Play(move);
     }
 
-    /// <summary>Undo is offered for untimed games with a human player, back to that human's last turn.</summary>
-    public bool CanUndo => Clock is null && !IsComputerThinking && HumanMoveIndexes().Any();
+    /// <summary>
+    /// Undo is offered for untimed classic games with a human player, back to that human's last turn.
+    /// Duels cannot be replayed fairly, so the duel variant has no undo.
+    /// </summary>
+    public bool CanUndo =>
+        Game.Variant == GameVariant.Classic && Clock is null && !IsComputerThinking && HumanMoveIndexes().Any();
 
     public void Undo()
     {
@@ -118,6 +128,14 @@ public sealed class GameSession : IDisposable
         GameEnded?.Invoke();
     }
 
+    public void ResolveDuel(DuelOutcome outcome)
+    {
+        if (Game.PendingDuel is not { } duel) throw new InvalidOperationException("There is no duel to resolve.");
+        var before = Game.Position;
+        Game.ResolveDuel(outcome);
+        Finish(PlayedMove.Describe(before, duel.Move, Game.SanMoves[^1], outcome));
+    }
+
     public SavedGame ToSave() => new(Setup, Game, Clock);
 
     public void Dispose() => CancelComputer();
@@ -126,10 +144,26 @@ public sealed class GameSession : IDisposable
     {
         var before = Game.Position;
         Game.MakeMove(move);
-        var played = PlayedMove.Describe(before, move, Game.SanMoves[^1]);
+        if (Game.PendingDuel is { } duel)
+        {
+            Clock?.Stop();
+            DuelStarted?.Invoke(duel);
+            return;
+        }
+        Finish(PlayedMove.Describe(before, move, Game.SanMoves[^1]));
+    }
 
-        if (Game.IsOver) Clock?.Stop();
-        else Clock?.SwitchTurn();
+    private void Finish(PlayedMove played)
+    {
+        if (Game.IsOver)
+        {
+            Clock?.Stop();
+        }
+        else if (Clock is not null)
+        {
+            Clock.SwitchTurn();
+            Clock.Start(Turn);
+        }
 
         MovePlayed?.Invoke(played);
         if (Game.IsOver) GameEnded?.Invoke();
@@ -138,12 +172,20 @@ public sealed class GameSession : IDisposable
 
     private void StartComputerIfNeeded()
     {
-        if (Game.IsOver || IsHumanTurn || _computerTask is not null) return;
+        if (Game.IsOver || Game.PendingDuel is not null || IsHumanTurn || _computerTask is not null) return;
 
         var position = Game.Position;
+        _thinkingFor = TimeSpan.Zero;
+
+        // An exposed king wins the game if its duel is won; the search does not know that rule, so take it directly.
+        if (Game.Variant == GameVariant.Duel && position.GenerateKingCaptures() is [var kingCapture, ..])
+        {
+            _computerTask = Task.FromResult(kingCapture);
+            return;
+        }
+
         var cancellation = new CancellationTokenSource();
         _computerCancellation = cancellation;
-        _thinkingFor = TimeSpan.Zero;
         _computerTask = Task.Run(() => _chooseComputerMove(position, cancellation.Token), cancellation.Token);
     }
 

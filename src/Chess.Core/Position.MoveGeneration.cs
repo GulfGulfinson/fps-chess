@@ -25,6 +25,16 @@ public sealed partial class Position
         return legal;
     }
 
+    /// <summary>
+    /// Duel variant: moves that capture the opponent's king, which can stand exposed after a lost duel.
+    /// They are allowed even when the mover's own king is in check.
+    /// </summary>
+    public List<Move> GenerateKingCaptures()
+    {
+        if (TryKingSquare(SideToMove.Opponent()) is not { } king) return [];
+        return GeneratePseudoLegalMoves().Where(m => m.To == king).ToList();
+    }
+
     public bool IsSquareAttacked(Square target, PieceColor by)
     {
         // Pawns attack diagonally forward, so look one rank "behind" the target from the attacker's view.

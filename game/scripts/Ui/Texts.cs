@@ -63,6 +63,7 @@ public static class Texts
             GameStatus.TimeForfeit when game.Winner is null => $"{loser} hat die Zeit überschritten. Remis, der Gegner kann nicht mehr mattsetzen.",
             GameStatus.TimeForfeit => $"{loser} hat die Zeit überschritten. {winner} gewinnt.",
             GameStatus.Resignation => $"{loser} gibt auf. {winner} gewinnt.",
+            GameStatus.KingCaptured => $"Der König ist gefallen! {winner} gewinnt.",
             _ => "",
         };
     }

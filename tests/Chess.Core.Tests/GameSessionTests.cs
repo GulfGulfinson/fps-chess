@@ -191,3 +191,88 @@ public class GameSessionTests
         Assert.NotNull(save.Clock);
     }
 }
+
+public class DuelGameSessionTests
+{
+    private static Move FirstLegalMove(Position position, CancellationToken _) => position.GenerateLegalMoves()[0];
+
+    private static GameSession Session(GameSetup setup, Game? game = null) =>
+        new(setup, game ?? new Game(Position.StartFen, setup.Variant), null, FirstLegalMove, TimeSpan.Zero);
+
+    private static readonly GameSetup HumanVsHuman = new(PlayerKind.Human, PlayerKind.Human, Variant: GameVariant.Duel);
+
+    [Fact]
+    public void CaptureRaisesDuelStartedAndWaitsForTheResult()
+    {
+        var session = Session(HumanVsHuman);
+        PendingDuel? started = null;
+        var played = new List<PlayedMove>();
+        session.DuelStarted += d => started = d;
+        session.MovePlayed += played.Add;
+
+        foreach (var uci in new[] { "e2e4", "d7d5", "e4d5" }) session.TryPlayHumanMove(Move.ParseUci(uci));
+
+        Assert.NotNull(started);
+        Assert.Equal(2, played.Count);
+        Assert.False(session.IsHumanTurn);
+
+        session.ResolveDuel(DuelOutcome.DefenderWon);
+
+        Assert.Equal(3, played.Count);
+        Assert.Equal(DuelOutcome.DefenderWon, played[2].Outcome);
+        Assert.True(session.IsHumanTurn);
+    }
+
+    [Fact]
+    public void ClockIsPausedDuringADuel()
+    {
+        var setup = HumanVsHuman with { TimeControl = new TimeControl(TimeSpan.FromSeconds(30), TimeSpan.Zero) };
+        var session = Session(setup);
+        foreach (var uci in new[] { "e2e4", "d7d5", "e4d5" }) session.TryPlayHumanMove(Move.ParseUci(uci));
+        var before = session.Clock!.Remaining(PieceColor.White);
+
+        session.Update(TimeSpan.FromSeconds(20));
+
+        Assert.Equal(before, session.Clock.Remaining(PieceColor.White));
+        session.ResolveDuel(DuelOutcome.AttackerWon);
+        session.Update(TimeSpan.FromSeconds(5));
+        Assert.Equal(TimeSpan.FromSeconds(25), session.Clock.Remaining(PieceColor.Black));
+    }
+
+    [Fact]
+    public void ComputerCapturesAnExposedKingImmediately()
+    {
+        var setup = new GameSetup(PlayerKind.Human, PlayerKind.Computer, Variant: GameVariant.Duel);
+        var game = new Game("4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1", GameVariant.Duel);
+        PendingDuel? started = null;
+        // A chooser that would never find the king capture on its own.
+        var session = new GameSession(setup, game, null, (p, _) => p.GenerateLegalMoves()[0], TimeSpan.Zero);
+        session.DuelStarted += d => started = d;
+
+        session.TryPlayHumanMove(Move.ParseUci("e2e8"));
+        session.ResolveDuel(DuelOutcome.DefenderWon);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (started?.Defender.Type != PieceType.King && DateTime.UtcNow < deadline)
+        {
+            session.Update(TimeSpan.FromMilliseconds(10));
+            Thread.Sleep(5);
+        }
+
+        Assert.Equal(new Piece(PieceType.King, PieceColor.White), started?.Defender);
+    }
+
+    [Fact]
+    public void UndoIsDisabledInTheDuelVariant()
+    {
+        var session = Session(HumanVsHuman);
+        session.TryPlayHumanMove(Move.ParseUci("e2e4"));
+
+        Assert.False(session.CanUndo);
+    }
+
+    [Fact]
+    public void ResolvingWithoutADuelThrows()
+    {
+        Assert.Throws<InvalidOperationException>(() => Session(HumanVsHuman).ResolveDuel(DuelOutcome.AttackerWon));
+    }
+}
