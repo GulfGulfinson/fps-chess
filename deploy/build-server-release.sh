@@ -16,8 +16,9 @@ dotnet build "$root/game/Chess.Game.csproj" -nologo -v quiet
 rm -rf "$out"
 mkdir -p "$out"
 rsync -a --delete \
-  --exclude '.godot/editor/' --exclude '.godot/shader_cache/' --exclude 'tools/' \
-  --exclude 'obj/' --exclude 'bin/' \
+  --exclude '/.godot/editor/' --exclude '/.godot/shader_cache/' --exclude '/tools/' \
   "$root/game/" "$out/game/"
+# The Godot .NET SDK builds into .godot/mono/temp/bin; without it the server cannot start.
+test -f "$out/game/.godot/mono/temp/bin/Debug/Chess.Game.dll"
 git -C "$root" rev-parse --short HEAD > "$out/REVISION"
 echo "release built in $out ($(du -sh "$out" | cut -f1), revision $(cat "$out/REVISION"))"
