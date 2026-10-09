@@ -39,6 +39,9 @@ public partial class Capture : Node
             case "2d":
                 CallDeferred(MethodName.Start2D, args.GetValueOrDefault("moves", ""), args.ContainsKey("timed"));
                 break;
+            case "lan":
+                CallDeferred(MethodName.StartLan);
+                break;
             case "fps":
                 CallDeferred(MethodName.StartFps, args.GetValueOrDefault("fen", Position.StartFen),
                     args.GetValueOrDefault("human", "white"), int.Parse(args.GetValueOrDefault("level", "2")), args.ContainsKey("timed"));
@@ -55,6 +58,8 @@ public partial class Capture : Node
             if (!_main.Session!.TryPlayHumanMove(Move.ParseUci(uci))) GD.PushError($"Capture: move {uci} rejected");
         }
     }
+
+    private void StartLan() => _main.HostLan("Tester");
 
     private void StartFps(string fen, string human, int level, bool timed)
     {
@@ -76,7 +81,11 @@ public partial class Capture : Node
     public override void _Process(double delta)
     {
         _frame++;
-        if (_frame == 45 && _submit is not null && _main.FindChild("Client", true, false) is NetClient { Channel: { } channel })
+        // LAN mode: create a room once the lobby is connected.
+        if (_frame == 120 && _main.FindChild("Client", true, false) is NetClient lanClient && _main.Match is null && _submit == "create")
+            lanClient.CreateRoom(new RoomSettings { PlayerName = "Tester", Public = true });
+
+        if (_frame == 45 && _submit is not null && _submit != "create" && _main.FindChild("Client", true, false) is NetClient { Channel: { } channel })
         {
             foreach (var uci in _submit.Split(',')) channel.RpcId(1, MatchChannel.MethodName.SubmitMove, uci);
         }

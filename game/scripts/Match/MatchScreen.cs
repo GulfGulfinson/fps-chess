@@ -52,6 +52,7 @@ public partial class MatchScreen : Node3D, IMatchClient
     private Main _main = null!;
     private NetClient _client = null!;
     private PieceColor _myColor;
+    private string? _lanHint;
 
     private Game? _game;
     private MatchStateDto? _state;
@@ -93,11 +94,13 @@ public partial class MatchScreen : Node3D, IMatchClient
     private bool _triggerHeld;
     private bool _zoomed;
 
-    public void Init(Main main, NetClient client, PieceColor myColor)
+    /// <param name="lanHint">Shown while waiting for an opponent when this player hosts a LAN game.</param>
+    public void Init(Main main, NetClient client, PieceColor myColor, string? lanHint)
     {
         _main = main;
         _client = client;
         _myColor = myColor;
+        _lanHint = lanHint;
     }
 
     public override void _Ready()
@@ -198,8 +201,13 @@ public partial class MatchScreen : Node3D, IMatchClient
         Deselect();
         RefreshMoveList();
         _hud.SetPlayers(PlayersText());
+        _gameOver.SetRematchVisible(_state.VsComputer);
         if (_game.IsOver) ShowGameOver();
     }
+
+    /// <summary>An online room exists before the second player arrives.</summary>
+    private bool WaitingForOpponent => _state is { VsComputer: false } state && !(state.White.Connected && state.Black.Connected) &&
+                                       (state.White.Name == "(wartet)" || state.Black.Name == "(wartet)");
 
     public void OnMovePlayed(string uci, int outcome)
     {
@@ -582,7 +590,9 @@ public partial class MatchScreen : Node3D, IMatchClient
     {
         if (_game is null) return;
         string status;
-        if (_game.IsOver) status = Texts.Result(_game);
+        if (WaitingForOpponent)
+            status = $"Warte auf einen Gegner ... Raumcode: {_state!.Code}" + (_lanHint is null ? "" : $"\n{_lanHint}");
+        else if (_game.IsOver) status = Texts.Result(_game);
         else if (_game.PendingDuel is not null) status = "Duell!";
         else if (IsMyTurn) status = "Du bist am Zug." + (_game.Position.IsInCheck(_myColor) ? " Schach!" : "");
         else status = _state?.VsComputer == true ? "Der Computer denkt nach ..." : "Der Gegner ist am Zug.";

@@ -18,6 +18,8 @@ public partial class ServerDuel : Node
     private const float OutcomeDisplaySeconds = 1.2f;
 
     private readonly List<(RigidBody3D Body, DuelRole Thrower, float FuseLeft)> _grenades = [];
+    private readonly Dictionary<DuelRole, PieceColor> _colors = [];
+    private PieceColor _attackerColor;
     private MatchRoom _room = null!;
     private Node3D _world = null!;
     private Node3D _content = null!;
@@ -37,6 +39,7 @@ public partial class ServerDuel : Node
         _room = room;
         _world = world;
         State = new DuelState(pending.Attacker.Type, pending.Defender.Type);
+        _attackerColor = pending.Attacker.Color;
 
         _content = new Node3D { Name = "DuelContent" };
         world.AddChild(_content);
@@ -89,6 +92,7 @@ public partial class ServerDuel : Node
         _content.AddChild(body);
 
         var fighter = new Fighter3D(role, type, peer, body, bot, height) { Position = at, Yaw = yaw };
+        _colors[role] = role == DuelRole.Attacker ? _attackerColor : _attackerColor.Opponent();
         bot?.Init(this, fighter, aiLevel);
         return fighter;
     }
@@ -116,6 +120,15 @@ public partial class ServerDuel : Node
     public Fighter3D this[DuelRole role] => role == DuelRole.Attacker ? _attacker : _defender;
 
     public Fighter3D Opponent(Fighter3D fighter) => fighter == _attacker ? _defender : _attacker;
+
+    /// <summary>A player came back with a new connection and takes over their fighter.</summary>
+    public void ReassignPeer(PieceColor color, int peer)
+    {
+        foreach (var fighter in new[] { _attacker, _defender })
+        {
+            if (_colors[fighter.Role] == color && fighter.Bot is null) fighter.Peer = peer;
+        }
+    }
 
     private Fighter3D? ByPeer(int peer) => _attacker.Peer == peer ? _attacker : _defender.Peer == peer ? _defender : null;
 
@@ -328,8 +341,8 @@ public sealed class Fighter3D(DuelRole role, PieceType type, int peer, Collision
     public DuelRole Role { get; } = role;
     public PieceType Type { get; } = type;
 
-    /// <summary>0 for the computer.</summary>
-    public int Peer { get; } = peer;
+    /// <summary>0 for the computer; changes when a player reconnects.</summary>
+    public int Peer { get; set; } = peer;
 
     public CollisionObject3D Body { get; } = body;
     public DuelBot? Bot { get; } = bot;

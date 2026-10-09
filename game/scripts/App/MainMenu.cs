@@ -28,6 +28,9 @@ public partial class MainMenu : Control
     private Label _message = null!;
     private Control _setupPanel = null!;
     private Control _loadPanel = null!;
+    private Control _onlinePanel = null!;
+    private LineEdit _playerName = null!;
+    private LineEdit _server = null!;
     private ItemList _saves = null!;
     private IReadOnlyList<SaveStore.Entry> _entries = [];
 
@@ -62,6 +65,9 @@ public partial class MainMenu : Control
         _loadPanel = BuildLoadPanel();
         _loadPanel.Visible = false;
         column.AddChild(_loadPanel);
+        _onlinePanel = BuildOnlinePanel();
+        _onlinePanel.Visible = false;
+        column.AddChild(_onlinePanel);
 
         _message = UiTheme.Label(_initialMessage ?? "", 16, UiTheme.Accent);
         _message.HorizontalAlignment = HorizontalAlignment.Center;
@@ -111,6 +117,7 @@ public partial class MainMenu : Control
         buttons.AddThemeConstantOverride("separation", 12);
         buttons.AddChild(UiTheme.Button("Neues Spiel", StartNewGame, 160));
         buttons.AddChild(UiTheme.Button("Spiel laden", ShowLoadPanel, 160));
+        buttons.AddChild(UiTheme.Button("Online spielen", ShowOnlinePanel, 170));
         buttons.AddChild(UiTheme.Button("Beenden", () => GetTree().Quit(), 120));
 
         var column = new VBoxContainer();
@@ -146,6 +153,68 @@ public partial class MainMenu : Control
         panel.AddChild(column);
         return panel;
     }
+
+    private Control BuildOnlinePanel()
+    {
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(640, 0) };
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 14);
+        column.AddChild(UiTheme.Label("FPS Chess online", 22, UiTheme.Accent, bold: true));
+
+        var grid = new GridContainer { Columns = 2 };
+        grid.AddThemeConstantOverride("h_separation", 24);
+        grid.AddThemeConstantOverride("v_separation", 14);
+        _playerName = new LineEdit { Text = UserPrefs.PlayerName, MaxLength = 24, CustomMinimumSize = new Vector2(400, 44) };
+        _server = new LineEdit { Text = UserPrefs.ServerUrl, CustomMinimumSize = new Vector2(400, 44) };
+        AddRow(grid, "Dein Name", _playerName);
+        AddRow(grid, "Server", _server);
+        column.AddChild(grid);
+
+        var hint = UiTheme.Label(
+            $"Öffentlicher Server: {NetConfig.DefaultServerUrl}. Für ein Spiel im LAN hostet einer, die anderen tragen dessen Adresse ein (ws://IP:{NetConfig.DefaultPort}).",
+            15, UiTheme.Muted);
+        hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        hint.CustomMinimumSize = new Vector2(600, 0);
+        column.AddChild(hint);
+
+        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        buttons.AddThemeConstantOverride("separation", 12);
+        buttons.AddChild(UiTheme.Button("Verbinden", ConnectOnline, 150));
+        buttons.AddChild(UiTheme.Button("Im LAN hosten", HostLan, 170));
+        buttons.AddChild(UiTheme.Button("Zurück", ShowSetupPanel, 120));
+        column.AddChild(buttons);
+        panel.AddChild(column);
+        return panel;
+    }
+
+    private void ShowOnlinePanel()
+    {
+        _setupPanel.Visible = false;
+        _loadPanel.Visible = false;
+        _onlinePanel.Visible = true;
+        _message.Text = "";
+    }
+
+    private string RememberName()
+    {
+        var name = string.IsNullOrWhiteSpace(_playerName.Text) ? "Spieler" : _playerName.Text.Trim();
+        UserPrefs.PlayerName = name;
+        return name;
+    }
+
+    private void ConnectOnline()
+    {
+        var url = _server.Text.Trim();
+        if (!url.StartsWith("ws://") && !url.StartsWith("wss://"))
+        {
+            _message.Text = "Die Serveradresse muss mit ws:// oder wss:// beginnen.";
+            return;
+        }
+        UserPrefs.ServerUrl = url;
+        _main.OpenOnlineLobby(url, RememberName());
+    }
+
+    private void HostLan() => _main.HostLan(RememberName());
 
     private static OptionButton Options(params string[] items)
     {
@@ -209,6 +278,7 @@ public partial class MainMenu : Control
     private void ShowSetupPanel()
     {
         _loadPanel.Visible = false;
+        _onlinePanel.Visible = false;
         _setupPanel.Visible = true;
         _message.Text = "";
     }

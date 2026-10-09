@@ -17,6 +17,10 @@ public partial class NetClient : Node, ILobbyClient
 
     public MatchChannel? Channel { get; private set; }
 
+    /// <summary>Room code and seat token of the current room, used to come back after a lost connection.</summary>
+    public string? RoomCode { get; private set; }
+    public string? SeatToken { get; private set; }
+
     public event Action? Welcomed;
     public event Action<string>? Failed;
     public event Action<string, PieceColor>? RoomJoined;
@@ -59,12 +63,17 @@ public partial class NetClient : Node, ILobbyClient
 
     public void RequestRoomList() => _lobby.RpcId(1, LobbyChannel.MethodName.RequestRoomList);
 
+    public void Rejoin(string code, string token) => _lobby.RpcId(1, LobbyChannel.MethodName.Rejoin, code, token);
+
     public void OnWelcome() => Welcomed?.Invoke();
 
     public void OnError(string message) => Fail(message);
 
-    public void OnRoomJoined(string code, string color)
+    public void OnRoomJoined(string code, string color, string token)
     {
+        RoomCode = code;
+        SeatToken = token;
+        Channel?.QueueFree();
         Channel = new MatchChannel { Name = code };
         _rooms.AddChild(Channel);
         // Handlers must attach the screen synchronously: the room's first message follows immediately.

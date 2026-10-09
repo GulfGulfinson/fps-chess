@@ -8,13 +8,14 @@ public interface ILobbyServer
     void OnCreateRoom(int peer, string settingsJson);
     void OnJoinRoom(int peer, string code);
     void OnRoomListRequested(int peer);
+    void OnRejoin(int peer, string code, string token);
 }
 
 public interface ILobbyClient
 {
     void OnWelcome();
     void OnError(string message);
-    void OnRoomJoined(string code, string color);
+    void OnRoomJoined(string code, string color, string token);
     void OnRoomList(string json);
 }
 
@@ -43,6 +44,10 @@ public partial class LobbyChannel : Node
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
     public void RequestRoomList() => Server?.OnRoomListRequested(Sender);
 
+    /// <summary>Takes a seat back after a lost connection, proven by the token from <see cref="RoomJoined"/>.</summary>
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    public void Rejoin(string code, string token) => Server?.OnRejoin(Sender, code, token);
+
     [Rpc]
     public void Welcome() => Client?.OnWelcome();
 
@@ -50,7 +55,7 @@ public partial class LobbyChannel : Node
     public void Error(string message) => Client?.OnError(message);
 
     [Rpc]
-    public void RoomJoined(string code, string color) => Client?.OnRoomJoined(code, color);
+    public void RoomJoined(string code, string color, string token) => Client?.OnRoomJoined(code, color, token);
 
     [Rpc]
     public void RoomList(string json) => Client?.OnRoomList(json);

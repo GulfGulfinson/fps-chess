@@ -7,6 +7,12 @@ public static class NetConfig
 
     public const int DefaultPort = 11800;
 
+    /// <summary>The public match server on gulfinson.</summary>
+    public const string DefaultServerUrl = "wss://chess.gulfgulfinson.de";
+
+    /// <summary>How long a seat is kept for a player whose connection dropped.</summary>
+    public const double ReconnectSeconds = 60;
+
     /// <summary>How often the server sends duel snapshots and clients send their pose.</summary>
     public const float SyncInterval = 1f / 30f;
 

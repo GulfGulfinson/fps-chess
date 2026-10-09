@@ -17,6 +17,11 @@ public partial class MatchRoom : Node, IMatchServer
 
     private readonly Dictionary<PieceColor, int> _seats = [];
     private readonly Dictionary<PieceColor, string> _names = [];
+    private readonly Dictionary<PieceColor, string> _tokens = [];
+
+    // Seconds since a seated player lost the connection; their seat is kept for a while.
+    private readonly Dictionary<PieceColor, double> _absentFor = [];
+    private string? _currentDuelJson;
     private LobbyServer _lobby = null!;
     private MatchChannel _channel = null!;
     private RoomSettings _settings = null!;
@@ -104,7 +109,31 @@ public partial class MatchRoom : Node, IMatchServer
         var color = _preferredColor is { } preferred && free.Contains(preferred) ? preferred : free[0];
         _seats[color] = peer;
         _names[color] = name;
+        _tokens[color] = Guid.NewGuid().ToString("N");
         return color;
+    }
+
+    public string TokenFor(PieceColor color) => _tokens[color];
+
+    /// <returns>The seat the token belongs to, if its player is currently away.</returns>
+    public PieceColor? TryReclaim(int peer, string token)
+    {
+        foreach (var (color, seatToken) in _tokens)
+        {
+            if (seatToken == token && _absentFor.ContainsKey(color)) return color;
+        }
+        return null;
+    }
+
+    public void OnReclaimed(int peer, PieceColor color)
+    {
+        _seats[color] = peer;
+        _absentFor.Remove(color);
+        _duel?.ReassignPeer(color, peer);
+        SendState(peer);
+        if (_currentDuelJson is { } duel) _channel.RpcId(peer, MatchChannel.MethodName.DuelStarted, duel);
+        foreach (var other in Peers.Where(p => p != peer))
+            _channel.RpcId(other, MatchChannel.MethodName.Notice, $"{_names[color]} ist wieder verbunden.");
     }
 
     public void OnSeated(int peer)
@@ -133,6 +162,7 @@ public partial class MatchRoom : Node, IMatchServer
 
     public override void _Process(double delta)
     {
+        TickAbsentPlayers(delta);
         if (_session is null) return;
         try
         {
@@ -171,13 +201,16 @@ public partial class MatchRoom : Node, IMatchServer
             AttackerColor = pending.Attacker.Color.ToString(),
         };
 
-        int PeerOf(PieceColor color) => _setup.PlayerFor(color) == PlayerKind.Human && _seats.TryGetValue(color, out var p) ? p : 0;
+        // 0 means the computer plays this side; an absent human gets -1 so no bot takes over their piece.
+        int PeerOf(PieceColor color) => _setup.PlayerFor(color) == PlayerKind.Computer ? 0
+            : _seats.TryGetValue(color, out var p) && p != 0 ? p : -1;
 
         _duel = new ServerDuel();
         AddChild(_duel);
         _duel.Init(this, _world, pending, _session!.Game.Position, _setup.AiLevel,
             PeerOf(pending.Attacker.Color), PeerOf(pending.Defender.Color));
-        SendAll(MatchChannel.MethodName.DuelStarted, NetJson.Write(dto));
+        _currentDuelJson = NetJson.Write(dto);
+        SendAll(MatchChannel.MethodName.DuelStarted, _currentDuelJson);
     }
 
     /// <summary>Called by the duel once its outcome has been shown for a moment.</summary>
@@ -185,6 +218,7 @@ public partial class MatchRoom : Node, IMatchServer
     {
         _duel?.QueueFree();
         _duel = null;
+        _currentDuelJson = null;
         SendAll(MatchChannel.MethodName.DuelEnded, (int)outcome);
         _session?.ResolveDuel(outcome);
     }
@@ -193,6 +227,7 @@ public partial class MatchRoom : Node, IMatchServer
     {
         _duel?.QueueFree();
         _duel = null;
+        _currentDuelJson = null;
         foreach (var peer in Peers) SendState(peer);
     }
 
@@ -258,15 +293,42 @@ public partial class MatchRoom : Node, IMatchServer
     public void OnPeerLeft(int peer)
     {
         if (ColorOf(peer) is not { } color) return;
-        _seats.Remove(color);
         GD.Print($"[room {Code}] {color} left");
 
-        if (_session is { Game.IsOver: false } && Peers.Any())
+        // A game against the computer or a room still waiting for its opponent has nothing to keep.
+        if (_settings.VsComputer || _session is null || _session.Game.IsOver)
         {
-            _session.Resign(color);
-            SendAll(MatchChannel.MethodName.Notice, $"{_names[color]} hat die Verbindung getrennt.");
+            _seats.Remove(color);
+            if (!Peers.Any()) _lobby.CloseRoom(this);
+            return;
         }
-        if (!Peers.Any()) _lobby.CloseRoom(this);
+
+        _seats[color] = 0;
+        _absentFor[color] = 0;
+        SendAll(MatchChannel.MethodName.Notice,
+            $"{_names[color]} hat die Verbindung verloren und hat {NetConfig.ReconnectSeconds:0} Sekunden, um zurückzukommen.");
+    }
+
+    private void TickAbsentPlayers(double delta)
+    {
+        foreach (var color in _absentFor.Keys.ToList())
+        {
+            _absentFor[color] += delta;
+            if (_absentFor[color] < NetConfig.ReconnectSeconds) continue;
+
+            _absentFor.Remove(color);
+            _seats.Remove(color);
+            if (_session is { Game.IsOver: false })
+            {
+                _session.Resign(color);
+                SendAll(MatchChannel.MethodName.Notice, $"{_names[color]} ist nicht zurückgekommen.");
+            }
+            if (!Peers.Any())
+            {
+                _lobby.CloseRoom(this);
+                return;
+            }
+        }
     }
 
     // ---------------------------------------------------------------- sending

@@ -6,6 +6,7 @@ namespace FpsChess.Ui;
 public partial class GameOverDialog : Control
 {
     private Label _result = null!;
+    private Button _rematch = null!;
 
     public event Action? RematchRequested;
     public event Action? MenuRequested;
@@ -39,13 +40,16 @@ public partial class GameOverDialog : Control
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         buttons.AddThemeConstantOverride("separation", 12);
-        buttons.AddChild(UiTheme.Button("Revanche", () => RematchRequested?.Invoke(), 140));
+        _rematch = UiTheme.Button("Revanche", () => RematchRequested?.Invoke(), 140);
+        buttons.AddChild(_rematch);
         buttons.AddChild(UiTheme.Button("Hauptmenü", () => MenuRequested?.Invoke(), 140));
         buttons.AddChild(UiTheme.Button("Brett ansehen", Close, 160));
         column.AddChild(buttons);
         panel.AddChild(column);
         center.AddChild(panel);
     }
+
+    public void SetRematchVisible(bool visible) => _rematch.Visible = visible;
 
     public void Open(string result)
     {

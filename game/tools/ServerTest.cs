@@ -29,6 +29,8 @@ public partial class ServerTest : Node
     private TestPlayer _a = null!;
     private TestPlayer _b = null!;
     private TestPlayer _c = null!;
+    private TestPlayer? _bBack;
+    private TestPlayer? _intruder;
     private string _roomCode = "";
     private double _sinceShot;
 
@@ -128,14 +130,51 @@ public partial class ServerTest : Node
             Check(_b.DamageTaken > 0, "B never saw the damage");
             return true;
         });
-        Then("resigning ends the game for both", _ =>
+        Then("B loses the connection and A is told", _ =>
         {
-            if (!_b.Resigned)
+            if (!_b.Dropped)
             {
-                _b.Resigned = true;
-                _b.Channel.RpcId(1, MatchChannel.MethodName.Resign);
+                _b.Dropped = true;
+                _a.Notices.Clear();
+                NetHost.Close(_b.Client);
             }
-            return _a.LastState?.ForfeitStatus == "Resignation" && _b.LastState?.ForfeitStatus == "Resignation";
+            return _a.Notices.Any(n => n.Contains("Verbindung verloren"));
+        });
+        Then("B comes back with its token and gets the game state", _ =>
+        {
+            _bBack ??= TestPlayer.Connect(this, _port, "Bob");
+            if (!_bBack.Welcomed) return false;
+            if (!_bBack.JoinRequested)
+            {
+                _bBack.JoinRequested = true;
+                _bBack.Client.Rejoin(_roomCode, _b.Client.SeatToken!);
+            }
+            return _bBack.Color == PieceColor.Black && _bBack.Game is { Moves.Count: 3 } && _a.Notices.Any(n => n.Contains("wieder verbunden"));
+        });
+        Then("a wrong token cannot take a seat", _ =>
+        {
+            var intruder = TestPlayer.Connect(this, _port, "Mallory");
+            _intruder = intruder;
+            return true;
+        });
+        Then("the intruder is refused", _ =>
+        {
+            if (!_intruder!.Welcomed) return false;
+            if (!_intruder.JoinRequested)
+            {
+                _intruder.JoinRequested = true;
+                _intruder.Client.Rejoin(_roomCode, "not-a-token");
+            }
+            return _intruder.Errors.Count > 0 && _intruder.Color is null;
+        });
+        Then("resigning after the reconnect ends the game for both", _ =>
+        {
+            if (!_bBack!.Resigned)
+            {
+                _bBack.Resigned = true;
+                _bBack.Channel.RpcId(1, MatchChannel.MethodName.Resign);
+            }
+            return _a.LastState?.ForfeitStatus == "Resignation" && _bBack.LastState?.ForfeitStatus == "Resignation";
         });
 
         // ---- scenario 2: against the computer, which must fight on its own
@@ -220,6 +259,8 @@ public partial class ServerTest : Node
         public bool ListRequested;
         public bool JoinRequested;
         public bool Resigned;
+        public bool Dropped;
+        public readonly List<string> Errors = [];
         public PieceColor? Color;
         public List<RoomListEntry>? Rooms;
         public int States;
@@ -239,7 +280,7 @@ public partial class ServerTest : Node
             var client = NetClient.Connect(parent, $"ws://127.0.0.1:{port}", name);
             var player = new TestPlayer { Client = client };
             client.Welcomed += () => player.Welcomed = true;
-            client.Failed += message => GD.PrintErr($"[test] {name} failed: {message}");
+            client.Failed += message => player.Errors.Add(message);
             client.RoomJoined += (_, color) =>
             {
                 player.Color = color;

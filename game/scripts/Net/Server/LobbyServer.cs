@@ -111,11 +111,23 @@ public partial class LobbyServer : Node, ILobbyServer
         _lobby.RpcId(peer, LobbyChannel.MethodName.RoomList, NetJson.Write(entries));
     }
 
+    public void OnRejoin(int peer, string code, string token)
+    {
+        if (!_names.ContainsKey(peer)) return;
+        if (!_rooms.TryGetValue(code.Trim().ToUpperInvariant(), out var room) || room.TryReclaim(peer, token) is not { } color)
+        {
+            _lobby.RpcId(peer, LobbyChannel.MethodName.Error, "Die Partie gibt es nicht mehr.");
+            return;
+        }
+        _lobby.RpcId(peer, LobbyChannel.MethodName.RoomJoined, room.Code, color.ToString(), room.TokenFor(color));
+        room.OnReclaimed(peer, color);
+    }
+
     private void Join(int peer, string name, MatchRoom room)
     {
         var color = room.Seat(peer, name);
         // RoomJoined makes the client create its channel node before the room sends anything to it.
-        _lobby.RpcId(peer, LobbyChannel.MethodName.RoomJoined, room.Code, color.ToString());
+        _lobby.RpcId(peer, LobbyChannel.MethodName.RoomJoined, room.Code, color.ToString(), room.TokenFor(color));
         room.OnSeated(peer);
     }
 

@@ -24,6 +24,8 @@ public partial class BoardHud : Control
         var left = Panel();
         var leftColumn = new VBoxContainer();
         _status = UiTheme.Label("", 22, bold: true);
+        _status.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _status.CustomMinimumSize = new Vector2(460, 0);
         _players = UiTheme.Label("", 18);
         leftColumn.AddChild(_status);
         leftColumn.AddChild(_players);

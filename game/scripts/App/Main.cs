@@ -29,10 +29,42 @@ public partial class Main : Node
     /// <summary>The running FPS Chess screen, if any. Exposed for the screenshot tool.</summary>
     public MatchScreen? Match => _screen as MatchScreen;
 
+    private OnlineContext? _online;
+
+    /// <summary>Where an online game runs, so a dropped connection can be resumed.</summary>
+    private sealed record OnlineContext(string Url, string Name, string? LanHint);
+
     public override void _Ready()
     {
+        var args = OS.GetCmdlineUserArgs();
+        if (args.Contains("--server"))
+        {
+            RunDedicatedServer(args);
+            return;
+        }
         InputSetup.Register();
         ShowMenu();
+    }
+
+    /// <summary>
+    /// Headless server mode for gulfinson: godot --headless --path game -- --server [--port 11800] [--bind 127.0.0.1]
+    /// </summary>
+    private void RunDedicatedServer(string[] args)
+    {
+        string Arg(string name, string fallback)
+        {
+            var index = Array.IndexOf(args, name);
+            return index >= 0 && index + 1 < args.Length ? args[index + 1] : fallback;
+        }
+
+        var port = int.TryParse(Arg("--port", ""), out var parsed) ? parsed : NetConfig.DefaultPort;
+        var bind = Arg("--bind", "127.0.0.1");
+        _localServer = LobbyServer.Start(this, port, bind, out var error);
+        if (error != Error.Ok)
+        {
+            GD.PushError($"[server] could not listen on {bind}:{port}: {error}");
+            GetTree().Quit(1);
+        }
     }
 
     public override void _ExitTree() => EndAll();
@@ -119,19 +151,104 @@ public partial class Main : Node
         });
     }
 
-    private void Connect(string url, string playerName, Action<NetClient> onWelcome)
+    private NetClient Connect(string url, string playerName, Action<NetClient> onWelcome)
     {
         var client = NetClient.Connect(this, url, playerName);
         _client = client;
         client.Welcomed += () => onWelcome(client);
-        client.Failed += message => ShowMenu(message);
-        client.Disconnected += () => ShowMenu("Die Verbindung zum Spielserver ist abgebrochen.");
+        client.Failed += message =>
+        {
+            // In the lobby the screen shows the error itself.
+            if (_screen is not LobbyScreen) ShowMenu(message);
+        };
+        client.Disconnected += () => OnDisconnected(client);
         client.RoomJoined += (_, color) =>
         {
             var screen = new MatchScreen();
-            screen.Init(this, client, color);
+            screen.Init(this, client, color, _online?.LanHint);
             SetScreen(screen);
             client.Channel!.Client = screen;
+        };
+        return client;
+    }
+
+    // ---------------------------------------------------------------- online
+
+    public void OpenOnlineLobby(string url, string playerName) => OpenLobby(url, playerName, url, null);
+
+    /// <summary>Hosts a server reachable from the local network and opens its lobby.</summary>
+    public void HostLan(string playerName)
+    {
+        EndAll();
+        _localServer = LobbyServer.Start(this, NetConfig.DefaultPort, "0.0.0.0", out var error);
+        if (error != Error.Ok)
+        {
+            ShowMenu($"Port {NetConfig.DefaultPort} ist belegt oder gesperrt ({error}).");
+            return;
+        }
+        var addresses = IP.GetLocalAddresses()
+            .Where(a => a.Contains('.') && !a.StartsWith("127.") && !a.StartsWith("169.254."))
+            .Select(a => $"ws://{a}:{NetConfig.DefaultPort}");
+        var hint = $"Du hostest im LAN. Mitspieler tragen als Server ein: {string.Join(" oder ", addresses)}";
+        OpenLobby($"ws://127.0.0.1:{NetConfig.DefaultPort}", playerName, "deinem LAN-Server", hint, keepServer: true);
+    }
+
+    private void OpenLobby(string url, string playerName, string label, string? hint, bool keepServer = false)
+    {
+        if (!keepServer) EndAll();
+        else EndClient();
+        _online = new OnlineContext(url, playerName, hint);
+        var client = Connect(url, playerName, _ => { });
+        var lobby = new LobbyScreen();
+        lobby.Init(this, client, label, hint);
+        SetScreen(lobby);
+    }
+
+    private void OnDisconnected(NetClient client)
+    {
+        if (client != _client) return;
+        // Online games keep the seat for a while: try to get back in.
+        if (_online is { } online && client.RoomCode is { } code && client.SeatToken is { } token && _screen is MatchScreen)
+        {
+            Reconnect(online, code, token, Time.GetTicksMsec());
+            return;
+        }
+        ShowMenu("Die Verbindung zum Spielserver ist abgebrochen.");
+    }
+
+    private void Reconnect(OnlineContext online, string code, string token, ulong startedMs)
+    {
+        EndClient();
+        var elapsed = (Time.GetTicksMsec() - startedMs) / 1000.0;
+        if (elapsed > NetConfig.ReconnectSeconds)
+        {
+            ShowMenu("Die Verbindung zum Spielserver ist abgebrochen.");
+            return;
+        }
+
+        ShowConnecting($"Verbindung verloren. Verbinde neu ... ({NetConfig.ReconnectSeconds - elapsed:0} s)");
+        var client = NetClient.Connect(this, online.Url, online.Name);
+        _client = client;
+        client.Welcomed += () => client.Rejoin(code, token);
+        client.RoomJoined += (_, color) =>
+        {
+            var screen = new MatchScreen();
+            screen.Init(this, client, color, online.LanHint);
+            SetScreen(screen);
+            client.Channel!.Client = screen;
+        };
+        client.Disconnected += () => OnDisconnected(client);
+        // Server unreachable or the seat is gone: try again shortly, until the seat would be lost anyway.
+        client.Failed += message =>
+        {
+            if (message.Contains("gibt es nicht mehr"))
+            {
+                ShowMenu(message);
+                return;
+            }
+            var retry = CreateTween();
+            retry.TweenInterval(3);
+            retry.TweenCallback(Callable.From(() => Reconnect(online, code, token, startedMs)));
         };
     }
 
@@ -154,20 +271,25 @@ public partial class Main : Node
     {
         _session?.Dispose();
         _session = null;
+        _online = null;
 
-        if (_client is not null)
-        {
-            // Close now: the node itself is freed at the end of the frame.
-            NetHost.Close(_client);
-            _client.QueueFree();
-            _client = null;
-        }
+        EndClient();
         if (_localServer is not null)
         {
             NetHost.Close(_localServer);
             _localServer.QueueFree();
             _localServer = null;
         }
+    }
+
+    private void EndClient()
+    {
+        if (_client is null) return;
+        // Close now: the node itself is freed at the end of the frame.
+        var client = _client;
+        _client = null;
+        NetHost.Close(client);
+        client.QueueFree();
     }
 
     private void SetScreen(Node screen)
