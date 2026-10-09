@@ -48,6 +48,17 @@ public class DuelStateTests
     }
 
     [Fact]
+    public void ToleranceAcceptsShotsJustBeforeTheCooldownEnds()
+    {
+        var duel = Fighting();
+        duel.TryFire(DuelRole.Attacker);
+        duel.Tick(0.22f);
+
+        Assert.False(duel.TryFire(DuelRole.Attacker));
+        Assert.True(duel.TryFire(DuelRole.Attacker, tolerance: 0.05f));
+    }
+
+    [Fact]
     public void EmptyMagazineReloadsAutomatically()
     {
         var duel = Fighting();

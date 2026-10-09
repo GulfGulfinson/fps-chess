@@ -130,10 +130,14 @@ public sealed class DuelState
     /// Fires one shot if the weapon is ready. An empty magazine starts a reload instead.
     /// The caller resolves the hit (raycasts) and reports damage through <see cref="ApplyDamage"/>.
     /// </summary>
-    public bool TryFire(DuelRole role)
+    /// <param name="tolerance">
+    /// Seconds of remaining cooldown to forgive. The server uses this because a client's shots arrive with
+    /// network jitter and would otherwise be rejected just before the cooldown runs out.
+    /// </param>
+    public bool TryFire(DuelRole role, float tolerance = 0f)
     {
         var fighter = this[role];
-        if (Phase != DuelPhase.Fighting || fighter.IsReloading || fighter.FireCooldown > Epsilon) return false;
+        if (Phase != DuelPhase.Fighting || fighter.IsReloading || fighter.FireCooldown > tolerance + Epsilon) return false;
         if (fighter.Ammo == 0)
         {
             StartReload(role);
