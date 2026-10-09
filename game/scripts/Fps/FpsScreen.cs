@@ -547,14 +547,22 @@ public partial class FpsScreen : Node3D
     }
 
     /// <summary>Hot-seat: once the move animation has played, hand the camera to the other player's side.</summary>
-    private void SwitchSideAfter(float seconds, PieceColor side)
+    private void SwitchSideAfter(float seconds, PieceColor side) => After(seconds, () =>
     {
-        GetTree().CreateTimer(seconds).Timeout += () =>
-        {
-            if (!IsInsideTree() || _session.Turn != side || _viewSide == side) return;
-            _viewSide = side;
-            _player.TeleportTo(BoardGeometry.SpawnFor(side));
-        };
+        if (_session.Turn != side || _viewSide == side) return;
+        _viewSide = side;
+        _player.TeleportTo(BoardGeometry.SpawnFor(side));
+    });
+
+    /// <summary>
+    /// Runs an action later on a tween owned by this node, so it is dropped when the screen is freed
+    /// (a SceneTreeTimer would still fire and touch the disposed screen).
+    /// </summary>
+    private void After(double seconds, Action action)
+    {
+        var tween = CreateTween();
+        tween.TweenInterval(seconds);
+        tween.TweenCallback(Callable.From(action));
     }
 
     private void OnPositionReset()
@@ -573,13 +581,13 @@ public partial class FpsScreen : Node3D
     private void OnGameEnded()
     {
         Deselect();
-        GetTree().CreateTimer(1.2).Timeout += () =>
+        After(1.2, () =>
         {
-            if (!IsInsideTree() || !_session.Game.IsOver) return;
+            if (!_session.Game.IsOver) return;
             Input.MouseMode = Input.MouseModeEnum.Visible;
             _pause.Visible = false;
             _gameOver.Open(Texts.Result(_session.Game));
-        };
+        });
     }
 
     private void RefreshMoveList()

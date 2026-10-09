@@ -77,7 +77,6 @@ public static class Effects
         particles.Emitting = true;
         Flash(parent, at, new Color(1f, 0.6f, 0.3f), 0.4f);
 
-        var timer = particles.GetTree().CreateTimer(2.0);
-        timer.Timeout += particles.QueueFree;
+        particles.Finished += particles.QueueFree;
     }
 }

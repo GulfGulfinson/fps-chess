@@ -32,6 +32,8 @@ public partial class Capture : Node
         {
             CallDeferred(MethodName.StartMode, (int)(mode == "fps" ? ViewMode.Fps : ViewMode.Board2D),
                 args.GetValueOrDefault("moves", ""), args.GetValueOrDefault("opponent", "") == "computer", args.ContainsKey("timed"));
+            // Save the game, then load the newest save into the 2D view to exercise the real save directory.
+            if (args.ContainsKey("saveload")) CallDeferred(MethodName.SaveAndReload);
         }
     }
 
@@ -44,6 +46,12 @@ public partial class Capture : Node
         {
             if (!_main.Session!.TryPlayHumanMove(Move.ParseUci(uci))) GD.PushError($"Capture: move {uci} rejected");
         }
+    }
+
+    private void SaveAndReload()
+    {
+        GD.Print($"Capture: {_main.SaveCurrentGame()} in {SaveStore.DirectoryPath}");
+        _main.LoadGame(ViewMode.Board2D, SaveStore.Load(SaveStore.List()[0]));
     }
 
     public override void _Process(double delta)
