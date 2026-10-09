@@ -1,11 +1,12 @@
 using FpsChess.Ui;
 using Godot;
 
-namespace FpsChess.Fps;
+namespace FpsChess.Ui;
 
 public partial class PauseMenu : Control
 {
     private Button _undo = null!;
+    private Button _save = null!;
     private Button _resign = null!;
     private Label _toast = null!;
 
@@ -41,7 +42,8 @@ public partial class PauseMenu : Control
         _resign = UiTheme.Button("Aufgeben", () => ResignRequested?.Invoke());
         column.AddChild(UiTheme.Button("Weiterspielen", () => ResumeRequested?.Invoke()));
         column.AddChild(_undo);
-        column.AddChild(UiTheme.Button("Spiel speichern", () => SaveRequested?.Invoke()));
+        _save = UiTheme.Button("Spiel speichern", () => SaveRequested?.Invoke());
+        column.AddChild(_save);
         column.AddChild(_resign);
         column.AddChild(UiTheme.Button("Hauptmenü", () => MenuRequested?.Invoke()));
 
@@ -63,4 +65,9 @@ public partial class PauseMenu : Control
     }
 
     public void ShowToast(string text) => _toast.Text = text;
+
+    public void SetSaveEnabled(bool enabled) => _save.Disabled = !enabled;
+
+    /// <summary>Hides the undo button for modes without undo.</summary>
+    public void SetUndoVisible(bool visible) => _undo.Visible = visible;
 }

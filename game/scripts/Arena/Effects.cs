@@ -1,6 +1,6 @@
 using Godot;
 
-namespace FpsChess.Fps;
+namespace FpsChess.Arena;
 
 /// <summary>Short-lived visual effects: laser tracers, muzzle flashes and debris bursts.</summary>
 public static class Effects

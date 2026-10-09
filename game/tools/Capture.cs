@@ -1,81 +1,98 @@
 using Chess.Core;
+using Chess.Core.Persistence;
 using FpsChess.App;
-using FpsChess.Fps;
+using FpsChess.Net;
+using FpsChess.Net.Client;
 using Godot;
 
 namespace FpsChess.Tools;
 
 /// <summary>
-/// Development tool, not part of the game: starts a screen, optionally plays moves and saves a screenshot.
-/// godot --path game res://tools/Capture.tscn -- --mode 2d|fps|menu --moves e2e4,e7e5 --out /tmp/shot.png
+/// Development tool, not part of the game: starts a screen, optionally plays moves and saves screenshots.
+///   godot --path game res://tools/Capture.tscn -- --mode menu|2d|fps --out /tmp/shot.png [--shots 60,300]
+///   2d:  --moves e2e4,e7e5 [--timed]
+///   fps: [--fen FEN] [--human white|black] [--submit e4d5] [--level 2] [--timed] [--fire FRAME]
+/// With --shots, one screenshot per listed frame is written as out_FRAME.png and the tool quits after the last.
 /// </summary>
 public partial class Capture : Node
 {
     private Main _main = null!;
     private string _out = "capture.png";
-    private int _frames = 90;
-    private readonly Queue<string> _clicks = new();
+    private readonly SortedSet<int> _shots = [];
+    private string? _submit;
+    private int _fireFrame = -1;
     private int _frame;
 
     public override void _Ready()
     {
         var args = ParseArgs(OS.GetCmdlineUserArgs());
         _out = args.GetValueOrDefault("out", _out);
-        if (args.TryGetValue("frames", out var frames)) _frames = int.Parse(frames);
-        foreach (var square in args.GetValueOrDefault("clicks", "").Split(',', StringSplitOptions.RemoveEmptyEntries)) _clicks.Enqueue(square);
+        foreach (var shot in args.GetValueOrDefault("shots", "90").Split(',')) _shots.Add(int.Parse(shot));
+        _submit = args.GetValueOrDefault("submit");
+        if (args.TryGetValue("fire", out var fire)) _fireFrame = int.Parse(fire);
 
         _main = GD.Load<PackedScene>("res://scenes/Main.tscn").Instantiate<Main>();
         AddChild(_main);
 
-        var mode = args.GetValueOrDefault("mode", "menu");
-        if (mode != "menu")
+        switch (args.GetValueOrDefault("mode", "menu"))
         {
-            CallDeferred(MethodName.StartMode, (int)(mode == "fps" ? ViewMode.Fps : ViewMode.Board2D),
-                args.GetValueOrDefault("moves", ""), args.GetValueOrDefault("opponent", "") == "computer", args.ContainsKey("timed"));
-            // Save the game, then load the newest save into the 2D view to exercise the real save directory.
-            if (args.ContainsKey("saveload")) CallDeferred(MethodName.SaveAndReload);
+            case "2d":
+                CallDeferred(MethodName.Start2D, args.GetValueOrDefault("moves", ""), args.ContainsKey("timed"));
+                break;
+            case "fps":
+                CallDeferred(MethodName.StartFps, args.GetValueOrDefault("fen", Position.StartFen),
+                    args.GetValueOrDefault("human", "white"), int.Parse(args.GetValueOrDefault("level", "2")), args.ContainsKey("timed"));
+                break;
         }
     }
 
-    private void StartMode(int view, string moves, bool computer, bool timed)
+    private void Start2D(string moves, bool timed)
     {
-        var setup = new GameSetup(PlayerKind.Human, computer ? PlayerKind.Computer : PlayerKind.Human, 2,
-            timed ? new TimeControl(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(3)) : null);
-        _main.StartGame((ViewMode)view, setup);
+        _main.StartGame(new GameSetup(PlayerKind.Human, PlayerKind.Human, 2,
+            timed ? new TimeControl(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(3)) : null));
         foreach (var uci in moves.Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             if (!_main.Session!.TryPlayHumanMove(Move.ParseUci(uci))) GD.PushError($"Capture: move {uci} rejected");
         }
     }
 
-    private void SaveAndReload()
+    private void StartFps(string fen, string human, int level, bool timed)
     {
-        GD.Print($"Capture: {_main.SaveCurrentGame()} in {SaveStore.DirectoryPath}");
-        _main.LoadGame(ViewMode.Board2D, SaveStore.Load(SaveStore.List()[0]));
+        var humanColor = human == "black" ? PieceColor.Black : PieceColor.White;
+        var setup = humanColor == PieceColor.White
+            ? new GameSetup(PlayerKind.Human, PlayerKind.Computer, level, null, GameVariant.Duel)
+            : new GameSetup(PlayerKind.Computer, PlayerKind.Human, level, null, GameVariant.Duel);
+        var save = GameSerializer.Serialize(new SavedGame(setup, new Game(fen, GameVariant.Duel), null));
+        _main.StartComputerMatch(new RoomSettings
+        {
+            PlayerName = "Tester",
+            AiLevel = level,
+            SaveJson = save,
+            InitialMs = timed ? 300_000 : null,
+            IncrementMs = timed ? 3_000 : null,
+        });
     }
 
     public override void _Process(double delta)
     {
-        // FPS mode: every 40 frames aim the camera at the next square and left-click, like a player would.
-        if (++_frame % 40 == 0 && _clicks.Count > 0 && _main.FindChild("Player", true, false) is FpsPlayer player)
+        _frame++;
+        if (_frame == 45 && _submit is not null && _main.FindChild("Client", true, false) is NetClient { Channel: { } channel })
         {
-            var square = Square.Parse(_clicks.Dequeue());
-            var piece = _main.Session!.Game.Position.PieceAt(square);
-            var target = BoardGeometry.Center(square) + new Vector3(0, piece is null ? 0 : 0.8f, 0);
-            Input.MouseMode = Input.MouseModeEnum.Captured;
-            player.Camera.LookAt(target);
-            GetTree().CreateTimer(0.1).Timeout += () =>
-            {
-                Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true });
-                Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = false });
-            };
+            foreach (var uci in _submit.Split(',')) channel.RpcId(1, MatchChannel.MethodName.SubmitMove, uci);
         }
 
-        if (--_frames > 0) return;
-        var image = GetViewport().GetTexture().GetImage();
-        image.SavePng(_out);
-        GD.Print($"Capture saved to {_out}");
-        GetTree().Quit();
+        // Hold the fire button for a second, as a player would.
+        if (_frame == _fireFrame || _frame == _fireFrame + 60)
+        {
+            Input.MouseMode = Input.MouseModeEnum.Captured;
+            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = _frame == _fireFrame });
+        }
+
+        if (!_shots.Contains(_frame)) return;
+        var path = _shots.Count > 1 || _shots.Min != 90 ? _out.Replace(".png", $"_{_frame}.png") : _out;
+        GetViewport().GetTexture().GetImage().SavePng(path);
+        GD.Print($"Capture saved to {path}");
+        if (_frame >= _shots.Max) GetTree().Quit();
     }
 
     private static Dictionary<string, string> ParseArgs(string[] args)

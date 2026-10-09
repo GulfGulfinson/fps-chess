@@ -1,12 +1,12 @@
 using Chess.Core;
 using Godot;
 
-namespace FpsChess.Fps;
+namespace FpsChess.Arena;
 
 /// <summary>A piece in the 3D world: model plus collider, so the player can bump into it and aim at it.</summary>
 public partial class PieceActor : AnimatableBody3D
 {
-    public const uint PhysicsLayer = 2;
+    public const uint PhysicsLayer = BoardGeometry.PieceLayer;
 
     private Node3D _model = null!;
     private float _hoverOffset;
@@ -36,7 +36,7 @@ public partial class PieceActor : AnimatableBody3D
         var height = PieceModels.Height(piece.Type);
         AddChild(new CollisionShape3D
         {
-            Shape = new CylinderShape3D { Radius = 1.0f * PieceModels.Scale, Height = height },
+            Shape = new CylinderShape3D { Radius = PieceModels.ColliderRadius, Height = height },
             Position = new Vector3(0, height / 2f, 0),
         });
     }

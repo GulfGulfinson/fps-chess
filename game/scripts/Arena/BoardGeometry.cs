@@ -1,13 +1,27 @@
 using Chess.Core;
 using Godot;
 
-namespace FpsChess.Fps;
+namespace FpsChess.Arena;
 
-/// <summary>Maps chess squares to world space. White sits at +Z, files run along +X, the board top is y = 0.</summary>
+/// <summary>
+/// World layout at piece scale: a square is 3 m, the board top and the table top are y = 0,
+/// white sits at +Z and files run along +X.
+/// </summary>
 public static class BoardGeometry
 {
     public const float Tile = 3f;
     public const float HalfBoard = Tile * 4f;
+
+    /// <summary>Half the table's edge length; beyond it a fighter falls.</summary>
+    public const float HalfTable = 30f;
+
+    /// <summary>A fighter below this height has fallen off the table and loses the duel.</summary>
+    public const float FallHeight = -5f;
+
+    public const uint WorldLayer = 1;
+    public const uint PieceLayer = 2;
+    public const uint PlayerLayer = 4;
+    public const uint HitboxLayer = 8;
 
     public static Vector3 Center(Square square) => new((square.File - 3.5f) * Tile, 0f, (3.5f - square.Rank) * Tile);
 
@@ -17,12 +31,10 @@ public static class BoardGeometry
         return square.IsOnBoard ? square : null;
     }
 
-    /// <summary>Where a player of this colour stands to look at the board from their side.</summary>
-    public static Transform3D SpawnFor(PieceColor color)
+    /// <summary>Rotation (around Y) that makes something at <paramref name="from"/> face <paramref name="to"/>.</summary>
+    public static float YawTowards(Vector3 from, Vector3 to)
     {
-        var z = HalfBoard + 6f;
-        return color == PieceColor.White
-            ? new Transform3D(Basis.Identity, new Vector3(0, 0.1f, z))
-            : new Transform3D(new Basis(Vector3.Up, Mathf.Pi), new Vector3(0, 0.1f, -z));
+        var direction = to - from;
+        return Mathf.Atan2(-direction.X, -direction.Z);
     }
 }

@@ -15,14 +15,28 @@ public static class SaveStore
     /// <summary>Writes the game to a new file named after the current time and returns that name.</summary>
     public static string Save(SavedGame save)
     {
-        var name = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        var path = System.IO.Path.Combine(DirectoryPath, name + ".json");
-        for (var i = 2; File.Exists(path); i++)
-        {
-            path = System.IO.Path.Combine(DirectoryPath, $"{name}_{i}.json");
-        }
+        var path = NewPath();
         GameSerializer.SaveToFile(save, path);
         return System.IO.Path.GetFileNameWithoutExtension(path);
+    }
+
+    /// <summary>Writes an already serialized save (sent by the match server) and returns its name.</summary>
+    public static string SaveJson(string json)
+    {
+        Directory.CreateDirectory(DirectoryPath);
+        var path = NewPath();
+        File.WriteAllText(path, json);
+        return System.IO.Path.GetFileNameWithoutExtension(path);
+    }
+
+    public static string ReadJson(Entry entry) => File.ReadAllText(entry.Path);
+
+    private static string NewPath()
+    {
+        var name = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        var path = System.IO.Path.Combine(DirectoryPath, name + ".json");
+        for (var i = 2; File.Exists(path); i++) path = System.IO.Path.Combine(DirectoryPath, $"{name}_{i}.json");
+        return path;
     }
 
     public static IReadOnlyList<Entry> List()
@@ -49,7 +63,8 @@ public static class SaveStore
             var players = $"{Texts.PlayerShort(save.Setup.White)} gegen {Texts.PlayerShort(save.Setup.Black)}";
             var state = save.Game.IsOver ? "beendet" : $"Zug {save.Game.Position.FullmoveNumber}";
             var clock = save.Clock is null ? "" : ", mit Uhr";
-            return $"{date}   {players}, {state}{clock}";
+            var mode = save.Setup.Variant == GameVariant.Duel ? "FPS Chess" : "2D";
+            return $"{date}   {mode}: {players}, {state}{clock}";
         }
         catch (Exception e) when (e is InvalidSaveFileException or IOException)
         {

@@ -1,5 +1,6 @@
 using Chess.Core;
 using Chess.Core.Persistence;
+using FpsChess.Net;
 using FpsChess.Ui;
 using Godot;
 
@@ -88,7 +89,7 @@ public partial class MainMenu : Control
         grid.AddThemeConstantOverride("h_separation", 24);
         grid.AddThemeConstantOverride("v_separation", 14);
 
-        _view = Options("2D-Brett (klassisch)", "FPS-Modus (Ego-Perspektive)");
+        _view = Options("2D-Brett (klassisch)", "FPS Chess (Duelle)");
         _opponent = Options("Mensch gegen Mensch", "Gegen Computer, ich spiele Weiß", "Gegen Computer, ich spiele Schwarz");
         _aiLevel = Options(Enumerable.Range(GameSetup.MinAiLevel, GameSetup.MaxAiLevel).Select(Texts.AiLevel).ToArray());
         _aiLevel.Selected = 2;
@@ -97,6 +98,7 @@ public partial class MainMenu : Control
         _timePreset.Selected = 2;
 
         _opponent.ItemSelected += _ => UpdateEnabled();
+        _view.ItemSelected += _ => UpdateEnabled();
         _timed.Toggled += _ => UpdateEnabled();
 
         AddRow(grid, "Ansicht", _view);
@@ -128,21 +130,11 @@ public partial class MainMenu : Control
         column.AddThemeConstantOverride("separation", 14);
 
         column.AddChild(UiTheme.Label("Gespeicherte Spiele", 22, UiTheme.Accent, bold: true));
-        column.AddChild(UiTheme.Label("Das Spiel wird in der oben gewählten Ansicht fortgesetzt.", 15, UiTheme.Muted));
+        column.AddChild(UiTheme.Label("FPS-Chess-Partien werden mit Duellen fortgesetzt, klassische auf dem 2D-Brett.", 15, UiTheme.Muted));
 
         _saves = new ItemList { CustomMinimumSize = new Vector2(0, 300) };
         _saves.ItemActivated += _ => LoadSelected();
         column.AddChild(_saves);
-
-        var viewRow = new HBoxContainer();
-        viewRow.AddThemeConstantOverride("separation", 12);
-        viewRow.AddChild(UiTheme.Label("Ansicht", 18, UiTheme.Muted));
-        var loadView = Options("2D-Brett (klassisch)", "FPS-Modus (Ego-Perspektive)");
-        loadView.ItemSelected += index => _view.Selected = (int)index;
-        _view.ItemSelected += index => loadView.Selected = (int)index;
-        loadView.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        viewRow.AddChild(loadView);
-        column.AddChild(viewRow);
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         buttons.AddThemeConstantOverride("separation", 12);
@@ -170,6 +162,10 @@ public partial class MainMenu : Control
 
     private void UpdateEnabled()
     {
+        // FPS Chess between two people needs two devices (online play), so locally it is against the computer.
+        var fps = SelectedView == ViewMode.Fps;
+        _opponent.SetItemDisabled(0, fps);
+        if (fps && _opponent.Selected == 0) _opponent.Selected = 1;
         _aiLevel.Disabled = _opponent.Selected == 0;
         _timePreset.Disabled = !_timed.ButtonPressed;
     }
@@ -183,8 +179,21 @@ public partial class MainMenu : Control
             _ => (PlayerKind.Human, PlayerKind.Human),
         };
         var timeControl = _timed.ButtonPressed ? TimePresets[_timePreset.Selected].Control : null;
-        var setup = new GameSetup(white, black, _aiLevel.Selected + GameSetup.MinAiLevel, timeControl);
-        _main.StartGame(SelectedView, setup);
+        var aiLevel = _aiLevel.Selected + GameSetup.MinAiLevel;
+
+        if (SelectedView == ViewMode.Fps)
+        {
+            _main.StartComputerMatch(new RoomSettings
+            {
+                PlayerName = "Du",
+                AiLevel = aiLevel,
+                HumanColor = white == PlayerKind.Human ? "White" : "Black",
+                InitialMs = (long?)timeControl?.Initial.TotalMilliseconds,
+                IncrementMs = (long?)timeControl?.Increment.TotalMilliseconds,
+            });
+            return;
+        }
+        _main.StartGame(new GameSetup(white, black, aiLevel, timeControl));
     }
 
     private ViewMode SelectedView => _view.Selected == 0 ? ViewMode.Board2D : ViewMode.Fps;
@@ -230,7 +239,11 @@ public partial class MainMenu : Control
         }
         try
         {
-            _main.LoadGame(SelectedView, SaveStore.Load(entry));
+            var save = SaveStore.Load(entry);
+            if (save.Setup.Variant == GameVariant.Duel)
+                _main.StartComputerMatch(new RoomSettings { PlayerName = "Du", SaveJson = SaveStore.ReadJson(entry) });
+            else
+                _main.LoadGame(save);
         }
         catch (Exception e) when (e is InvalidSaveFileException or IOException)
         {

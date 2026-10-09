@@ -1,7 +1,7 @@
 using Chess.Core;
 using Godot;
 
-namespace FpsChess.Fps;
+namespace FpsChess.Arena;
 
 /// <summary>
 /// Builds the giant 3D pieces from primitive meshes, so the project needs no model files.
@@ -31,6 +31,9 @@ public static class PieceModels
 
     /// <summary>Models are authored large and scaled down so the player (eye height 1.7 m) can see over the pawns.</summary>
     public const float Scale = 0.62f;
+
+    /// <summary>Radius of a piece's collision cylinder, shared by the client and the server.</summary>
+    public const float ColliderRadius = 1.0f * Scale;
 
     public static float Height(PieceType type) => Scale * type switch
     {
