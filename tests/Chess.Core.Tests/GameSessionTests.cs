@@ -276,3 +276,20 @@ public class DuelGameSessionTests
         Assert.Throws<InvalidOperationException>(() => Session(HumanVsHuman).ResolveDuel(DuelOutcome.AttackerWon));
     }
 }
+
+public class ExplicitResignTests
+{
+    [Fact]
+    public void AnExplicitSideCanResignAtAnyTime()
+    {
+        var session = new GameSession(new GameSetup(PlayerKind.Human, PlayerKind.Human), null, null,
+            (p, _) => p.GenerateLegalMoves()[0], TimeSpan.Zero);
+        var ended = false;
+        session.GameEnded += () => ended = true;
+
+        session.Resign(PieceColor.Black);
+
+        Assert.True(ended);
+        Assert.Equal(PieceColor.White, session.Game.Winner);
+    }
+}

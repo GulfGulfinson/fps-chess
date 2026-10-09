@@ -122,6 +122,13 @@ public sealed class GameSession : IDisposable
         var loser = Setup.PlayerFor(Turn) == PlayerKind.Human || Setup.PlayerFor(Turn.Opponent()) == PlayerKind.Computer
             ? Turn
             : Turn.Opponent();
+        Resign(loser);
+    }
+
+    /// <summary>A specific side resigns, e.g. an online player, whoever's turn it is.</summary>
+    public void Resign(PieceColor loser)
+    {
+        if (Game.IsOver) return;
         CancelComputer();
         Game.Resign(loser);
         Clock?.Stop();
