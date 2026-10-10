@@ -65,9 +65,17 @@ public class GameSessionTests
     [Fact]
     public void ComputerWaitsForTheMinimumThinkTime()
     {
-        var session = new GameSession(HumanVsComputer, null, null, FirstLegalMove, TimeSpan.FromSeconds(1));
+        // Wait for the background search itself instead of a fixed sleep, which is flaky on a busy machine.
+        using var searched = new ManualResetEventSlim();
+        Move Choose(Position position, CancellationToken token)
+        {
+            var move = FirstLegalMove(position, token);
+            searched.Set();
+            return move;
+        }
+        var session = new GameSession(HumanVsComputer, null, null, Choose, TimeSpan.FromSeconds(1));
         session.TryPlayHumanMove(Move.ParseUci("e2e4"));
-        Thread.Sleep(100);
+        Assert.True(searched.Wait(TimeSpan.FromSeconds(5)));
 
         session.Update(TimeSpan.FromMilliseconds(500));
         Assert.Single(session.Game.Moves);
