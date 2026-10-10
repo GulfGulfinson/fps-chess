@@ -55,6 +55,8 @@ public partial class GameOverDialog : Control
 
     public void SetRematchVisible(bool visible) => _rematch.Visible = visible;
 
+    public void SetRematchText(string text) => _rematch.Text = text;
+
     /// <summary>A line under the buttons, e.g. "Warte auf den Gegner".</summary>
     public void SetStatus(string text) => _status.Text = text;
 

@@ -54,6 +54,8 @@ public partial class MatchScreen : Node3D, IMatchClient
     private NetClient _client = null!;
     private PieceColor _myColor;
     private string? _lanHint;
+    private Move? _trainingCapture;
+    private bool _trainingStarted;
 
     private Game? _game;
     private MatchStateDto? _state;
@@ -103,13 +105,17 @@ public partial class MatchScreen : Node3D, IMatchClient
     private bool _announcedFight;
 
     /// <param name="lanHint">Shown while waiting for an opponent when this player hosts a LAN game.</param>
-    public void Init(Main main, NetClient client, PieceColor myColor, string? lanHint)
+    /// <param name="trainingCapture">In a training duel: the capture to play at once; the game ends with the duel.</param>
+    public void Init(Main main, NetClient client, PieceColor myColor, string? lanHint, Move? trainingCapture)
     {
         _main = main;
         _client = client;
         _myColor = myColor;
         _lanHint = lanHint;
+        _trainingCapture = trainingCapture;
     }
+
+    private bool Training => _trainingCapture is not null;
 
     public override void _Ready()
     {
@@ -246,6 +252,12 @@ public partial class MatchScreen : Node3D, IMatchClient
         RefreshMoveList();
         _hud.SetPlayers(PlayersText());
         if (_game.IsOver) ShowGameOver();
+
+        if (_trainingCapture is { } capture && !_trainingStarted && _game.Moves.Count == 0)
+        {
+            _trainingStarted = true;
+            Channel.RpcId(1, MatchChannel.MethodName.SubmitMove, capture.ToUci());
+        }
     }
 
     /// <summary>An online room exists before the second player arrives.</summary>
@@ -290,6 +302,18 @@ public partial class MatchScreen : Node3D, IMatchClient
         if (_game.IsOver)
         {
             ShowGameOver();
+            return;
+        }
+        if (Training && outcome >= 0)
+        {
+            // A training duel is over once its one duel is decided.
+            var won = (DuelOutcome)outcome == DuelOutcome.AttackerWon;
+            After(1.0, () =>
+            {
+                Input.MouseMode = Input.MouseModeEnum.Visible;
+                _gameOver.SetRematchText("Nochmal");
+                _gameOver.Open(won ? "Training: Du hast das Duell gewonnen!" : "Training: Das Duell ging verloren.");
+            });
             return;
         }
         if (_game.Position.IsInCheck(_game.Position.SideToMove))

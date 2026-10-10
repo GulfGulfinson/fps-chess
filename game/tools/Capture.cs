@@ -54,6 +54,10 @@ public partial class Capture : Node
             case "2d":
                 CallDeferred(MethodName.Start2D, args.GetValueOrDefault("moves", ""), args.ContainsKey("timed"));
                 break;
+            case "training":
+                CallDeferred(MethodName.StartTrainingMode, args.GetValueOrDefault("mine", "Pawn"), args.GetValueOrDefault("enemy", "Pawn"),
+                    int.Parse(args.GetValueOrDefault("level", "2")));
+                break;
             case "lan":
                 CallDeferred(MethodName.StartLan);
                 break;
@@ -75,6 +79,9 @@ public partial class Capture : Node
     }
 
     private void StartLan() => _main.HostLan("Tester");
+
+    private void StartTrainingMode(string mine, string enemy, int level) =>
+        _main.StartTraining(Enum.Parse<PieceType>(mine), Enum.Parse<PieceType>(enemy), level);
 
     private void StartFps(string fen, string human, int level, bool timed)
     {

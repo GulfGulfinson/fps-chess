@@ -1,4 +1,5 @@
 using Chess.Core;
+using Chess.Core.Duels;
 using Chess.Core.Persistence;
 using Chess.Core.Session;
 using FpsChess.Board2D;
@@ -22,6 +23,7 @@ public partial class Main : Node
     private LobbyServer? _localServer;
     private NetClient? _client;
     private RoomSettings? _lastMatch;
+    private (PieceType Mine, PieceType Enemy, int Level)? _lastTraining;
 
     /// <summary>The running 2D game, if any. Exposed for the screenshot tool.</summary>
     public GameSession? Session => _session;
@@ -138,10 +140,27 @@ public partial class Main : Node
         Connect($"ws://127.0.0.1:{port}", settings.PlayerName, client => client.CreateRoom(settings));
     }
 
+    /// <summary>
+    /// Practice one duel: the player's piece can capture the computer's piece at once, and the capture is
+    /// played automatically, so the duel starts right after the intro.
+    /// </summary>
+    public void StartTraining(PieceType mine, PieceType enemy, int level)
+    {
+        var (fen, capture) = TrainingDuel.Create(mine, enemy);
+        var setup = new GameSetup(PlayerKind.Human, PlayerKind.Computer, level, null, GameVariant.Duel);
+        var save = GameSerializer.Serialize(new SavedGame(setup, new Chess.Core.Game(fen, GameVariant.Duel), null));
+        StartComputerMatch(new RoomSettings { PlayerName = "Du", AiLevel = level, SaveJson = save });
+        _lastTraining = (mine, enemy, level);
+        _trainingCapture = capture;
+    }
+
+    private Move? _trainingCapture;
+
     /// <summary>New game with the same settings as the one that just ended.</summary>
     public void Rematch()
     {
-        if (_session is { } session) StartGame(session.Setup);
+        if (_lastTraining is { } training) StartTraining(training.Mine, training.Enemy, training.Level);
+        else if (_session is { } session) StartGame(session.Setup);
         else if (_lastMatch is { } match) StartComputerMatch(new RoomSettings
         {
             PlayerName = match.PlayerName,
@@ -166,7 +185,7 @@ public partial class Main : Node
         client.RoomJoined += (_, color) =>
         {
             var screen = new MatchScreen();
-            screen.Init(this, client, color, _online?.LanHint);
+            screen.Init(this, client, color, _online?.LanHint, _trainingCapture);
             SetScreen(screen);
             client.Channel!.Client = screen;
         };
@@ -234,7 +253,7 @@ public partial class Main : Node
         client.RoomJoined += (_, color) =>
         {
             var screen = new MatchScreen();
-            screen.Init(this, client, color, online.LanHint);
+            screen.Init(this, client, color, online.LanHint, null);
             SetScreen(screen);
             client.Channel!.Client = screen;
         };
@@ -273,6 +292,8 @@ public partial class Main : Node
         _session?.Dispose();
         _session = null;
         _online = null;
+        _lastTraining = null;
+        _trainingCapture = null;
 
         EndClient();
         if (_localServer is not null)

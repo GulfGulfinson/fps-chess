@@ -31,6 +31,7 @@ public partial class MainMenu : Control
     private Control _setupPanel = null!;
     private Control _loadPanel = null!;
     private Control _onlinePanel = null!;
+    private Control _trainingPanel = null!;
     private LineEdit _playerName = null!;
     private LineEdit _server = null!;
     private ItemList _saves = null!;
@@ -70,6 +71,9 @@ public partial class MainMenu : Control
         _onlinePanel = BuildOnlinePanel();
         _onlinePanel.Visible = false;
         column.AddChild(_onlinePanel);
+        _trainingPanel = BuildTrainingPanel();
+        _trainingPanel.Visible = false;
+        column.AddChild(_trainingPanel);
 
         _message = UiTheme.Label(_initialMessage ?? "", 16, UiTheme.Accent);
         _message.HorizontalAlignment = HorizontalAlignment.Center;
@@ -130,6 +134,7 @@ public partial class MainMenu : Control
 
         var extras = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         extras.AddThemeConstantOverride("separation", 12);
+        extras.AddChild(UiTheme.Button("Duell-Training", ShowTrainingPanel, 180));
         extras.AddChild(UiTheme.Button("Anleitung", () => _guide.Open(), 180));
         extras.AddChild(UiTheme.Button("Einstellungen", () => _settings.Open(), 180));
 
@@ -199,6 +204,48 @@ public partial class MainMenu : Control
         column.AddChild(buttons);
         panel.AddChild(column);
         return panel;
+    }
+
+    private Control BuildTrainingPanel()
+    {
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(600, 0) };
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 14);
+        column.AddChild(UiTheme.Label("Duell-Training", 22, UiTheme.Accent, bold: true));
+        var hint = UiTheme.Label("Ein einzelnes Duell gegen den Computer, ohne Schachpartie drumherum. Du greifst an.", 15, UiTheme.Muted);
+        hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        column.AddChild(hint);
+
+        var pieces = Enum.GetValues<PieceType>().Select(t => $"{Texts.Glyph(t)}  {Texts.Piece(t)}").ToArray();
+        var mine = Options(pieces);
+        var enemy = Options(pieces);
+        var level = Options(Enumerable.Range(GameSetup.MinAiLevel, GameSetup.MaxAiLevel).Select(Texts.AiLevel).ToArray());
+        level.Selected = 1;
+        var grid = new GridContainer { Columns = 2 };
+        grid.AddThemeConstantOverride("h_separation", 24);
+        grid.AddThemeConstantOverride("v_separation", 14);
+        AddRow(grid, "Deine Figur", mine);
+        AddRow(grid, "Gegner", enemy);
+        AddRow(grid, "Computer-Stärke", level);
+        column.AddChild(grid);
+
+        var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        buttons.AddThemeConstantOverride("separation", 12);
+        buttons.AddChild(UiTheme.Button("Duell starten", () =>
+            _main.StartTraining((PieceType)mine.Selected, (PieceType)enemy.Selected, level.Selected + GameSetup.MinAiLevel), 180));
+        buttons.AddChild(UiTheme.Button("Zurück", ShowSetupPanel, 120));
+        column.AddChild(buttons);
+        panel.AddChild(column);
+        return panel;
+    }
+
+    private void ShowTrainingPanel()
+    {
+        _setupPanel.Visible = false;
+        _loadPanel.Visible = false;
+        _onlinePanel.Visible = false;
+        _trainingPanel.Visible = true;
+        _message.Text = "";
     }
 
     private void ShowOnlinePanel()
@@ -293,6 +340,7 @@ public partial class MainMenu : Control
     {
         _loadPanel.Visible = false;
         _onlinePanel.Visible = false;
+        _trainingPanel.Visible = false;
         _setupPanel.Visible = true;
         _message.Text = "";
     }
