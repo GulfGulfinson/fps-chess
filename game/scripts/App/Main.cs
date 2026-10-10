@@ -233,7 +233,8 @@ public partial class Main : Node
             Reconnect(online, code, token, Time.GetTicksMsec());
             return;
         }
-        ShowMenu("Die Verbindung zum Spielserver ist abgebrochen.");
+        // The server closes the connection right after refusing us (e.g. an outdated version): show why.
+        ShowMenu(client.LastError ?? "Die Verbindung zum Spielserver ist abgebrochen.");
     }
 
     private void Reconnect(OnlineContext online, string code, string token, ulong startedMs)

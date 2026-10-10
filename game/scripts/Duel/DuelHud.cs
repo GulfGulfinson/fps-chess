@@ -16,6 +16,8 @@ public partial class DuelHud : Control
     private Label _perks = null!;
     private Label _timer = null!;
     private Label _center = null!;
+    private Label _message = null!;
+    private Tween? _messageTween;
     private ColorRect _damageFlash = null!;
     private Indicators _indicators = null!;
     private Tween? _flashTween;
@@ -68,6 +70,13 @@ public partial class DuelHud : Control
         _ammo.GrowHorizontal = GrowDirection.Begin;
         _ammo.GrowVertical = GrowDirection.Begin;
         _ammo.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomRight, LayoutPresetMode.KeepSize, 28);
+
+        _message = Outlined(UiTheme.Label("", 22, new Color("ffd36b"), bold: true));
+        _message.HorizontalAlignment = HorizontalAlignment.Center;
+        AddChild(_message);
+        _message.GrowHorizontal = GrowDirection.Both;
+        _message.GrowVertical = GrowDirection.Begin;
+        _message.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterBottom, LayoutPresetMode.KeepSize, 110);
 
         _center = Outlined(UiTheme.Label("", 72, UiTheme.Accent, bold: true));
         _center.HorizontalAlignment = HorizontalAlignment.Center;
@@ -126,6 +135,17 @@ public partial class DuelHud : Control
     }
 
     public void SetZoomed(bool zoomed) => _crosshair.Zoomed = zoomed;
+
+    /// <summary>A quick message from or to the opponent, shown for a few seconds.</summary>
+    public void ShowMessage(string text)
+    {
+        _message.Text = text;
+        _messageTween?.Kill();
+        _message.Modulate = Colors.White;
+        _messageTween = CreateTween();
+        _messageTween.TweenInterval(3);
+        _messageTween.TweenProperty(_message, "modulate:a", 0f, 0.6f);
+    }
 
     public void HitMarker(bool headshot = false) => _crosshair.Hit(headshot);
 

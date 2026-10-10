@@ -130,7 +130,19 @@ public partial class LobbyScreen : Control
         Refresh();
     }
 
-    private void OnFailed(string message) => _status.Text = message;
+    private void OnFailed(string message)
+    {
+        _status.Text = message;
+        if (NetConfig.IsVersionMismatch(message) && _download is null)
+        {
+            _download = UiTheme.Button("Neue Version herunterladen", () => OS.ShellOpen(NetConfig.ReleasesUrl), 280);
+            _download.SizeFlagsHorizontal = SizeFlags.ShrinkBegin;
+            _status.GetParent().AddChild(_download);
+            _status.GetParent().MoveChild(_download, _status.GetIndex() + 1);
+        }
+    }
+
+    private Button? _download;
 
     private void OnRoomList(List<RoomListEntry> rooms)
     {

@@ -3,9 +3,15 @@ namespace FpsChess.Net;
 public static class NetConfig
 {
     /// <summary>Bump whenever a message changes; client and server must match exactly.</summary>
-    public const int ProtocolVersion = 4;
+    public const int ProtocolVersion = 5;
 
     public const int DefaultPort = 11800;
+
+    /// <summary>Where players get the current version when theirs no longer matches the server.</summary>
+    public const string ReleasesUrl = "https://github.com/GulfGulfinson/fps-chess/releases/latest";
+
+    /// <summary>True for the server's version-mismatch error (also from older servers, whose text has no link).</summary>
+    public static bool IsVersionMismatch(string? message) => message?.Contains("Versionen passen nicht") == true;
 
     /// <summary>The public match server on gulfinson.</summary>
     public const string DefaultServerUrl = "wss://chess.gulfgulfinson.de";

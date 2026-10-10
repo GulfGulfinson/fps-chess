@@ -56,7 +56,7 @@ public partial class LobbyServer : Node, ILobbyServer
         if (protocol != NetConfig.ProtocolVersion)
         {
             _lobby.RpcId(peer, LobbyChannel.MethodName.Error,
-                $"Versionen passen nicht zusammen (Spiel {protocol}, Server {NetConfig.ProtocolVersion}). Bitte das Spiel aktualisieren.");
+                $"Versionen passen nicht zusammen (Spiel {protocol}, Server {NetConfig.ProtocolVersion}). Bitte das Spiel aktualisieren: {NetConfig.ReleasesUrl}");
             // Give the error message time to arrive; a node-owned tween dies with the server.
             var tween = CreateTween();
             tween.TweenInterval(0.5);

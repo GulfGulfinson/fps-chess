@@ -42,7 +42,7 @@ public partial class BoardHud : Control
         right.GrowHorizontal = GrowDirection.Begin;
         right.SetAnchorsAndOffsetsPreset(LayoutPreset.TopRight, LayoutPresetMode.KeepSize, 24);
 
-        _hint = Outlined(UiTheme.Label("Linksklick: Figur wählen und ziehen     Rechte Maustaste halten: Kamera drehen     Mausrad: Zoom     Esc: Menü", 15, UiTheme.Muted));
+        _hint = Outlined(UiTheme.Label("Linksklick: Figur wählen und ziehen     Rechte Maustaste halten: Kamera drehen     Mausrad: Zoom     1-4: Kurznachrichten (online)     Esc: Menü", 15, UiTheme.Muted));
         _hint.HorizontalAlignment = HorizontalAlignment.Center;
         AddChild(_hint);
         _hint.GrowHorizontal = GrowDirection.Both;

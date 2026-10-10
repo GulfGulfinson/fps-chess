@@ -81,6 +81,14 @@ public partial class MainMenu : Control
         _message.CustomMinimumSize = new Vector2(560, 0);
         column.AddChild(_message);
 
+        // A version mismatch from the server: offer the download right here.
+        if (NetConfig.IsVersionMismatch(_initialMessage))
+        {
+            var download = UiTheme.Button("Neue Version herunterladen", () => OS.ShellOpen(NetConfig.ReleasesUrl), 280);
+            download.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+            column.AddChild(download);
+        }
+
         _settings = new SettingsPanel();
         AddChild(_settings);
         _guide = new GuidePanel();

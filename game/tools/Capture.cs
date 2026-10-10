@@ -58,6 +58,9 @@ public partial class Capture : Node
                 CallDeferred(MethodName.StartTrainingMode, args.GetValueOrDefault("mine", "Pawn"), args.GetValueOrDefault("enemy", "Pawn"),
                     int.Parse(args.GetValueOrDefault("level", "2")));
                 break;
+            case "online":
+                CallDeferred(MethodName.StartOnline, args.GetValueOrDefault("url", "wss://chess.gulfgulfinson.de"));
+                break;
             case "lan":
                 CallDeferred(MethodName.StartLan);
                 break;
@@ -79,6 +82,8 @@ public partial class Capture : Node
     }
 
     private void StartLan() => _main.HostLan("Tester");
+
+    private void StartOnline(string url) => _main.OpenOnlineLobby(url, "Tester");
 
     private void StartTrainingMode(string mine, string enemy, int level) =>
         _main.StartTraining(Enum.Parse<PieceType>(mine), Enum.Parse<PieceType>(enemy), level);

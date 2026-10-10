@@ -91,6 +91,14 @@ Spiel braucht keine Audiodateien.
 | Duell | G | Granate (Dame) |
 | beide | Esc | Menü (Speichern gegen den Computer, Aufgeben, Hauptmenü) |
 
+### Duell-Training
+
+Im Hauptmenü unter "Duell-Training" eigene Figur, gegnerische Figur und Computer-Stärke wählen: Das Duell beginnt
+sofort, ohne Schachpartie drumherum. Gut zum Üben und um die Figuren kennenzulernen.
+
+Der Computer berücksichtigt bei FPS Chess das Duellrisiko: Ein Schlagzug zählt für ihn nur so viel wie sein
+erwarteter Wert aus Siegchance (aus den Klassenwerten) und dem, was bei einer Niederlage verloren geht.
+
 ### Grafik
 
 Im Hauptmenü unter "Grafik (FPS Chess)": **Niedrig** rendert die 3D-Szene mit 60 % der Auflösung (hochskaliert mit
@@ -103,6 +111,9 @@ Im Hauptmenü "Online spielen": Namen eingeben und mit dem öffentlichen Server 
 verbinden. In der Lobby eine Partie erstellen (Bedenkzeit, Farbe) oder einer offenen Partie beitreten, aus der
 Liste oder mit dem vierstelligen Raumcode. Bricht die Verbindung ab, verbindet sich das Spiel neu; der Platz bleibt
 60 Sekunden reserviert.
+
+Mit den Tasten 1 bis 4 schickt man dem Gegner Kurznachrichten ("Hallo!", "Gut gespielt!", "Glück gehabt!",
+"Revanche?"). Passt die eigene Version nicht mehr zum Server, bietet das Spiel direkt den Download an.
 
 Nach einer Online-Partie startet "Revanche" eine neue Partie im selben Raum, sobald beide zustimmen; die Farben
 werden getauscht. Mausempfindlichkeit, Sichtfeld, Lautstärke und Grafik stehen unter "Einstellungen" (Hauptmenü und

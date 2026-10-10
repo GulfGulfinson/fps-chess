@@ -23,6 +23,8 @@ public partial class MatchRoom : Node, IMatchServer
     private readonly Dictionary<PieceColor, double> _absentFor = [];
     private string? _currentDuelJson;
     private readonly HashSet<PieceColor> _rematchWanted = [];
+    private readonly Dictionary<int, double> _lastChat = [];
+    private double _clock;
     private SubViewport _viewport = null!;
     private LobbyServer _lobby = null!;
     private MatchChannel _channel = null!;
@@ -171,6 +173,7 @@ public partial class MatchRoom : Node, IMatchServer
 
     public override void _Process(double delta)
     {
+        _clock += delta;
         TickAbsentPlayers(delta);
         if (_session is null) return;
         try
@@ -323,6 +326,15 @@ public partial class MatchRoom : Node, IMatchServer
         foreach (var (color, peer) in _seats) _lobby.AnnounceSeat(peer, this, color);
         GD.Print($"[room {Code}] rematch");
         StartGame();
+    }
+
+    public void OnChat(int peer, int message)
+    {
+        if (ColorOf(peer) is not { } color || QuickChat.Text(message) is null) return;
+        // At most one message per second per player.
+        if (_lastChat.TryGetValue(peer, out var last) && _clock - last < 1.0) return;
+        _lastChat[peer] = _clock;
+        foreach (var other in Peers.Where(p => p != peer)) _channel.RpcId(other, MatchChannel.MethodName.Chat, _names[color], message);
     }
 
     public void OnPauseRequested(int peer, bool paused)

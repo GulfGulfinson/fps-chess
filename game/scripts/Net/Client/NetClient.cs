@@ -21,6 +21,9 @@ public partial class NetClient : Node, ILobbyClient
     public string? RoomCode { get; private set; }
     public string? SeatToken { get; private set; }
 
+    /// <summary>The last error the server reported; a disconnect right after it should show this, not a generic text.</summary>
+    public string? LastError { get; private set; }
+
     public event Action? Welcomed;
     public event Action<string>? Failed;
     public event Action<string, PieceColor>? RoomJoined;
@@ -55,7 +58,11 @@ public partial class NetClient : Node, ILobbyClient
 
     private void OnConnected() => _lobby.RpcId(1, LobbyChannel.MethodName.Hello, NetConfig.ProtocolVersion, _playerName);
 
-    private void Fail(string message) => Failed?.Invoke(message);
+    private void Fail(string message)
+    {
+        LastError = message;
+        Failed?.Invoke(message);
+    }
 
     public void CreateRoom(RoomSettings settings) => _lobby.RpcId(1, LobbyChannel.MethodName.CreateRoom, NetJson.Write(settings));
 

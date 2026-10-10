@@ -39,6 +39,8 @@ public partial class ServerTest : Node
     private bool _cheated;
     private bool _headshotFired;
     private bool _rematchAsked;
+    private bool _chatted;
+    private double _chatWait;
     private bool _rematchAccepted;
     private double _waited;
     private double _moveTime;
@@ -144,6 +146,20 @@ public partial class ServerTest : Node
                 return false;
             }
             return _b.Notices.Count > 0;
+        });
+        Then("a quick message reaches the opponent and spamming is limited", _ =>
+        {
+            if (!_chatted)
+            {
+                _chatted = true;
+                _a.Channel.RpcId(1, MatchChannel.MethodName.SendChat, 1);
+                _a.Channel.RpcId(1, MatchChannel.MethodName.SendChat, 2);
+                _a.Channel.RpcId(1, MatchChannel.MethodName.SendChat, 99);
+            }
+            if ((_chatWait += 1.0 / 60.0) < 0.5) return false;
+            Check(_b.Chats.Count == 1 && _b.Chats[0] == ("Alice", 1), $"B got {string.Join(", ", _b.Chats)}");
+            Check(_a.Chats.Count == 0, "the sender got its own message back");
+            return true;
         });
         Then("a capture starts a duel for both", _ =>
         {
@@ -457,5 +473,9 @@ public partial class ServerTest : Node
         public void OnSaveData(string json) { }
         public void OnNotice(string text) => Notices.Add(text);
         public void OnClockSync(long whiteMs, long blackMs) { }
+
+        public readonly List<(string From, int Message)> Chats = [];
+
+        public void OnChatReceived(string from, int message) => Chats.Add((from, message));
     }
 }

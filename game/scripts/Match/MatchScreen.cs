@@ -490,6 +490,25 @@ public partial class MatchScreen : Node3D, IMatchClient
         if (_pause.Visible) _pause.ShowToast(text);
     }
 
+    public void OnChatReceived(string from, int message)
+    {
+        if (QuickChat.Text(message) is not { } text) return;
+        var line = $"{from}: {text}";
+        _hud.ShowToast(line);
+        if (_phase != Phase.Board) _duelHud.ShowMessage(line);
+        if (_gameOver.Visible) _gameOver.SetStatus(line);
+        Sfx.Play(this, Sound.Beep, -8f, pitchJitter: 0f);
+    }
+
+    private void SendQuickChat(int message)
+    {
+        if (VsComputer || QuickChat.Text(message) is not { } text) return;
+        Channel.RpcId(1, MatchChannel.MethodName.SendChat, message);
+        var line = $"Du: {text}";
+        _hud.ShowToast(line);
+        if (_phase != Phase.Board) _duelHud.ShowMessage(line);
+    }
+
     public void OnClockSync(long whiteMs, long blackMs)
     {
         _whiteMs = whiteMs;
@@ -531,6 +550,12 @@ public partial class MatchScreen : Node3D, IMatchClient
             else if (_promotion.Visible) _promotion.Visible = false;
             else if (!_gameOver.Visible) OpenPause();
             GetViewport().SetInputAsHandled();
+            return;
+        }
+        // Quick messages on 1 to 4, in every phase, online only.
+        if (@event is InputEventKey { Pressed: true, Echo: false } key && key.PhysicalKeycode is >= Key.Key1 and <= Key.Key4)
+        {
+            SendQuickChat((int)(key.PhysicalKeycode - Key.Key1));
             return;
         }
         if (OverlayOpen) return;

@@ -15,6 +15,7 @@ public interface IMatchServer
     void OnDash(int peer);
     void OnThrowGrenade(int peer, Vector3 origin, Vector3 velocity);
     void OnRematchRequested(int peer);
+    void OnChat(int peer, int message);
 }
 
 public interface IMatchClient
@@ -31,6 +32,7 @@ public interface IMatchClient
     void OnSaveData(string json);
     void OnNotice(string text);
     void OnClockSync(long whiteMs, long blackMs);
+    void OnChatReceived(string from, int message);
 }
 
 /// <summary>
@@ -84,6 +86,10 @@ public partial class MatchChannel : Node
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
     public void RequestRematch() => Server?.OnRematchRequested(Sender);
 
+    /// <summary>A quick message by number (see <see cref="QuickChat"/>); free text is deliberately not possible.</summary>
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    public void SendChat(int message) => Server?.OnChat(Sender, message);
+
     // ---- server to client
 
     [Rpc]
@@ -122,4 +128,7 @@ public partial class MatchChannel : Node
 
     [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered, TransferChannel = 1)]
     public void ClockSync(long whiteMs, long blackMs) => Client?.OnClockSync(whiteMs, blackMs);
+
+    [Rpc]
+    public void Chat(string from, int message) => Client?.OnChatReceived(from, message);
 }
