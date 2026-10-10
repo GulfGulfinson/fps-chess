@@ -25,7 +25,8 @@ public partial class MainMenu : Control
     private OptionButton _aiLevel = null!;
     private CheckButton _timed = null!;
     private OptionButton _timePreset = null!;
-    private OptionButton _graphics = null!;
+    private SettingsPanel _settings = null!;
+    private GuidePanel _guide = null!;
     private Label _message = null!;
     private Control _setupPanel = null!;
     private Control _loadPanel = null!;
@@ -75,6 +76,11 @@ public partial class MainMenu : Control
         _message.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _message.CustomMinimumSize = new Vector2(560, 0);
         column.AddChild(_message);
+
+        _settings = new SettingsPanel();
+        AddChild(_settings);
+        _guide = new GuidePanel();
+        AddChild(_guide);
     }
 
     public override void _Draw()
@@ -114,10 +120,6 @@ public partial class MainMenu : Control
         AddRow(grid, "Zeitmodus", _timed);
         AddRow(grid, "Bedenkzeit", _timePreset);
 
-        _graphics = Options(Enum.GetValues<GraphicsLevel>().Select(GraphicsQuality.Label).ToArray());
-        _graphics.Selected = (int)UserPrefs.Graphics;
-        _graphics.ItemSelected += index => UserPrefs.Graphics = (GraphicsLevel)(int)index;
-        AddRow(grid, "Grafik (FPS Chess)", _graphics);
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         buttons.AddThemeConstantOverride("separation", 12);
@@ -126,10 +128,16 @@ public partial class MainMenu : Control
         buttons.AddChild(UiTheme.Button("Online spielen", ShowOnlinePanel, 170));
         buttons.AddChild(UiTheme.Button("Beenden", () => GetTree().Quit(), 120));
 
+        var extras = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        extras.AddThemeConstantOverride("separation", 12);
+        extras.AddChild(UiTheme.Button("Anleitung", () => _guide.Open(), 180));
+        extras.AddChild(UiTheme.Button("Einstellungen", () => _settings.Open(), 180));
+
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 22);
         column.AddChild(grid);
         column.AddChild(buttons);
+        column.AddChild(extras);
         panel.AddChild(column);
 
         UpdateEnabled();

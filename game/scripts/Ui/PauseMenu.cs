@@ -15,6 +15,7 @@ public partial class PauseMenu : Control
     public event Action? SaveRequested;
     public event Action? ResignRequested;
     public event Action? MenuRequested;
+    public event Action? SettingsRequested;
 
     public override void _Ready()
     {
@@ -45,6 +46,7 @@ public partial class PauseMenu : Control
         _save = UiTheme.Button("Spiel speichern", () => SaveRequested?.Invoke());
         column.AddChild(_save);
         column.AddChild(_resign);
+        column.AddChild(UiTheme.Button("Einstellungen", () => SettingsRequested?.Invoke()));
         column.AddChild(UiTheme.Button("Hauptmenü", () => MenuRequested?.Invoke()));
 
         _toast = UiTheme.Label("", 15, UiTheme.Accent);

@@ -27,6 +27,7 @@ public partial class Capture : Node
     private readonly SortedSet<double> _times = [];
     private double _elapsed;
     private bool _submitted;
+    private string? _open;
 
     public override void _Ready()
     {
@@ -41,6 +42,7 @@ public partial class Capture : Node
             foreach (var shot in args.GetValueOrDefault("shots", "90").Split(',')) _shots.Add(int.Parse(shot));
         }
         _submit = args.GetValueOrDefault("submit");
+        _open = args.GetValueOrDefault("open");
         if (args.TryGetValue("graphics", out var graphics)) UserPrefs.Graphics = Enum.Parse<GraphicsLevel>(graphics, ignoreCase: true);
         if (args.TryGetValue("fire", out var fire)) _fireAt = double.Parse(fire, System.Globalization.CultureInfo.InvariantCulture);
 
@@ -136,6 +138,8 @@ public partial class Capture : Node
                      $"physics {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:0.0} ms, " +
                      $"window {DisplayServer.WindowGetSize()}");
         }
+
+        if (_frame == 20 && _open is not null && _main.FindChild(_open, true, false) is Control panel) panel.Visible = true;
 
         // Time-based screenshots (seconds since start) for sequences, independent of the frame rate.
         _elapsed += delta;

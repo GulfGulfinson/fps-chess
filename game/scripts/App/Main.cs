@@ -43,6 +43,7 @@ public partial class Main : Node
             return;
         }
         InputSetup.Register();
+        UserPrefs.ApplyAudio();
         ShowMenu();
     }
 

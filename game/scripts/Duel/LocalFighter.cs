@@ -15,7 +15,7 @@ public partial class LocalFighter : CharacterBody3D
     private const float BaseSpeed = 7f;
     private const float SprintMultiplier = 1.45f;
     private const float JumpVelocity = 5.5f;
-    private const float MouseSensitivity = 0.0025f;
+    private const float BaseSensitivity = 0.0025f;
 
     private readonly float _gravity = (float)ProjectSettings.GetSetting("physics/3d/default_gravity");
     private Node3D _head = null!;
@@ -59,7 +59,7 @@ public partial class LocalFighter : CharacterBody3D
 
         _head = new Node3D { Position = new Vector3(0, Ballistics.EyeHeight(PieceHeight), 0) };
         AddChild(_head);
-        Camera = new Camera3D { Fov = 80f, Near = 0.03f, Far = 600f };
+        Camera = new Camera3D { Fov = UserPrefs.FieldOfView, Near = 0.03f, Far = 600f };
         _head.AddChild(Camera);
         Camera.AddChild(Weapon);
     }
@@ -67,9 +67,10 @@ public partial class LocalFighter : CharacterBody3D
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!ControlsEnabled || @event is not InputEventMouseMotion motion) return;
-        var zoomFactor = Camera.Fov / 80f;
-        RotateY(-motion.Relative.X * MouseSensitivity * zoomFactor);
-        var pitch = Mathf.Clamp(_head.Rotation.X - motion.Relative.Y * MouseSensitivity * zoomFactor, -1.45f, 1.45f);
+        // Slower turning while zoomed keeps the scope usable.
+        var sensitivity = BaseSensitivity * UserPrefs.MouseSensitivity * Camera.Fov / UserPrefs.FieldOfView;
+        RotateY(-motion.Relative.X * sensitivity);
+        var pitch = Mathf.Clamp(_head.Rotation.X - motion.Relative.Y * sensitivity, -1.45f, 1.45f);
         _head.Rotation = new Vector3(pitch, 0, 0);
     }
 
@@ -145,7 +146,8 @@ public partial class LocalFighter : CharacterBody3D
 
     public void SetZoom(bool zoomed)
     {
-        Camera.Fov = zoomed ? Class.ZoomFov ?? 65f : 80f;
+        var fov = UserPrefs.FieldOfView;
+        Camera.Fov = zoomed ? Class.ZoomFov ?? fov * 0.8f : fov;
         Weapon.SetAiming(zoomed);
     }
 

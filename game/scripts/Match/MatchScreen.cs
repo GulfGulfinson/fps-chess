@@ -88,6 +88,7 @@ public partial class MatchScreen : Node3D, IMatchClient
     private readonly List<PieceActor> _hiddenActors = [];
     private Node3D? _attackArrow;
     private VersusCard _versus = null!;
+    private SettingsPanel _settings = null!;
     private int _duelCounter;
     private float _serverAttackerHealth;
     private float _serverDefenderHealth;
@@ -160,6 +161,17 @@ public partial class MatchScreen : Node3D, IMatchClient
         };
         _pause.MenuRequested += () => _main.ShowMenu();
 
+        _settings = new SettingsPanel();
+        layer.AddChild(_settings);
+        _pause.SettingsRequested += () =>
+        {
+            _pause.Visible = false;
+            _settings.Open();
+        };
+        _settings.Closed += () => _pause.Visible = true;
+        // A new field of view applies at once; sensitivity is read on every mouse movement anyway.
+        _settings.Changed += () => _fighter?.SetZoom(_zoomed);
+
         _promotion = new PromotionPicker();
         layer.AddChild(_promotion);
         _promotion.Picked += type => Submit(_pendingPromotion.First(m => m.Promotion == type));
@@ -171,7 +183,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         _gameOver.MenuRequested += () => _main.ShowMenu();
     }
 
-    private bool OverlayOpen => _pause.Visible || _promotion.Visible || _gameOver.Visible;
+    private bool OverlayOpen => _pause.Visible || _promotion.Visible || _gameOver.Visible || _settings.Visible;
 
     private bool VsComputer => _state?.VsComputer ?? false;
 
@@ -455,7 +467,12 @@ public partial class MatchScreen : Node3D, IMatchClient
     {
         if (@event.IsActionPressed(InputSetup.Pause))
         {
-            if (_pause.Visible) ClosePause();
+            if (_settings.Visible)
+            {
+                _settings.Visible = false;
+                _pause.Visible = true;
+            }
+            else if (_pause.Visible) ClosePause();
             else if (_promotion.Visible) _promotion.Visible = false;
             else if (!_gameOver.Visible) OpenPause();
             GetViewport().SetInputAsHandled();
