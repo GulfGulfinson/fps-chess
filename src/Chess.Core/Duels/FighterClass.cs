@@ -68,4 +68,12 @@ public static class FighterClasses
     };
 
     public static FighterClass For(PieceType piece) => Classes[piece];
+
+    /// <summary>Hits on the top of a piece (its "head") deal extra damage.</summary>
+    public const float HeadshotMultiplier = 1.5f;
+
+    /// <summary>Relative height (0 feet, 1 top) from which a hit counts as a headshot.</summary>
+    public const float HeadZone = 0.82f;
+
+    public static bool IsHeadshot(float relativeHeight) => relativeHeight >= HeadZone;
 }

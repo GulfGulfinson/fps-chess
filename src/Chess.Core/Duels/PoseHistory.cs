@@ -26,9 +26,18 @@ public sealed class PoseHistory(float windowSeconds)
     /// and <paramref name="height"/>) at some moment within the window before <paramref name="now"/>.
     /// Movement between two samples is treated as a straight line.
     /// </summary>
-    public bool Contains(Vector3 point, float now, float radius, float height)
+    public bool Contains(Vector3 point, float now, float radius, float height) =>
+        HitHeight(point, now, radius, height) is not null;
+
+    /// <summary>
+    /// Where on the body the point lies, from 0 (feet) to 1 (top of the head), or null when it missed.
+    /// While the target moved vertically (a jump) the most central reading is used, so only hits that are
+    /// clearly at the top count as headshots.
+    /// </summary>
+    public float? HitHeight(Vector3 point, float now, float radius, float height)
     {
         var from = now - windowSeconds;
+        float? best = null;
         for (var i = 0; i < _samples.Count; i++)
         {
             var (time, feet) = _samples[i];
@@ -37,9 +46,13 @@ public sealed class PoseHistory(float windowSeconds)
             // Only the part of the movement inside the window counts.
             if (previousTime < from && time > previousTime)
                 start = Vector3.Lerp(start, feet, (from - previousTime) / (time - previousTime));
-            if (Inside(point, start, feet, radius, height)) return true;
+            if (!Inside(point, start, feet, radius, height)) continue;
+
+            var feetY = Math.Clamp(point.Y - height / 2f, MathF.Min(start.Y, feet.Y), MathF.Max(start.Y, feet.Y));
+            var relative = (point.Y - feetY) / height;
+            if (best is null || MathF.Abs(relative - 0.5f) < MathF.Abs(best.Value - 0.5f)) best = relative;
         }
-        return false;
+        return best;
     }
 
     private static bool Inside(Vector3 point, Vector3 a, Vector3 b, float radius, float height)

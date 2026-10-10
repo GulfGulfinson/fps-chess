@@ -69,3 +69,46 @@ public class PoseHistoryTests
         Assert.False(new PoseHistory(0.6f).Contains(Vector3.Zero, now: 0f, Radius, Height));
     }
 }
+
+public class HeadshotTests
+{
+    private const float Radius = 0.9f;
+    private const float Height = 2f;
+
+    [Fact]
+    public void ReportsHowHighOnTheBodyAHitLanded()
+    {
+        var history = new PoseHistory(0.6f);
+        history.Record(0f, new Vector3(0, 0, 0));
+
+        Assert.Equal(0.5f, history.HitHeight(new Vector3(0, 1f, 0), now: 0.1f, Radius, Height)!.Value, 3);
+        Assert.Equal(0.9f, history.HitHeight(new Vector3(0, 1.8f, 0), now: 0.1f, Radius, Height)!.Value, 3);
+        Assert.Null(history.HitHeight(new Vector3(5, 1f, 0), now: 0.1f, Radius, Height));
+    }
+
+    [Fact]
+    public void HeightIsMeasuredFromWhereTheTargetStoodWhenHit()
+    {
+        // The target jumped: a hit at y = 2.5 is a body hit while it was in the air, not a miss over its head.
+        var history = new PoseHistory(0.6f);
+        history.Record(0f, new Vector3(0, 0, 0));
+        history.Record(0.1f, new Vector3(0, 1.5f, 0));
+
+        Assert.True(history.HitHeight(new Vector3(0, 2.5f, 0), now: 0.15f, Radius, Height) < 0.82f);
+    }
+
+    [Theory]
+    [InlineData(0.85f, true)]
+    [InlineData(0.81f, false)]
+    [InlineData(1.05f, true)]
+    public void TopOfThePieceCountsAsHead(float relativeHeight, bool head)
+    {
+        Assert.Equal(head, FighterClasses.IsHeadshot(relativeHeight));
+    }
+
+    [Fact]
+    public void HeadshotsDealOneAndAHalfTimesTheDamage()
+    {
+        Assert.Equal(1.5f, FighterClasses.HeadshotMultiplier);
+    }
+}
