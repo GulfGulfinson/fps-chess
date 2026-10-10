@@ -23,7 +23,7 @@ public interface IMatchClient
     void OnDuelStarted(string json);
     void OnDuelSnapshot(Vector3 attacker, float attackerYaw, float attackerPitch, Vector3 defender, float defenderYaw, float defenderPitch, float[] stats);
     void OnShotFired(int role, Vector3 origin, Vector3[] ends);
-    void OnDamaged(int role, float amount);
+    void OnDamaged(int role, float amount, bool headshot);
     void OnGrenadeThrown(int role, Vector3 origin, Vector3 velocity);
     void OnGrenadeExploded(Vector3 position);
     void OnDuelEnded(int outcome);
@@ -98,7 +98,7 @@ public partial class MatchChannel : Node
     public void ShotFired(int role, Vector3 origin, Vector3[] ends) => Client?.OnShotFired(role, origin, ends);
 
     [Rpc]
-    public void Damaged(int role, float amount) => Client?.OnDamaged(role, amount);
+    public void Damaged(int role, float amount, bool headshot) => Client?.OnDamaged(role, amount, headshot);
 
     [Rpc]
     public void GrenadeThrown(int role, Vector3 origin, Vector3 velocity) => Client?.OnGrenadeThrown(role, origin, velocity);

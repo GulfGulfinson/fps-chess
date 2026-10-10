@@ -332,7 +332,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         for (var i = 0; i < ends.Length; i++) Effects.Tracer(_effects, _opponent.Head, ends[i], color, flash: i == 0);
     }
 
-    public void OnDamaged(int role, float amount)
+    public void OnDamaged(int role, float amount, bool headshot)
     {
         if (_phase is not (Phase.Duel or Phase.DuelIntro)) return;
         // Our own hits already showed a marker the moment we fired.

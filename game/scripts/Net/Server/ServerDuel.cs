@@ -249,24 +249,29 @@ public partial class ServerDuel : Node
 
         var target = Opponent(shooter);
         var space = _world.GetWorld3D().DirectSpaceState;
-        var hits = 0;
+        var damage = 0f;
+        var headshot = false;
         for (var i = 0; i < ends.Length; i++)
         {
             if ((hitMask & (1 << i)) == 0) continue;
             var end = ends[i];
             if (origin.DistanceTo(end) > weapon.MaxRange + 1f) continue;
-            if (!target.History.Contains(end.ToNumerics(), _time, 0.45f + NetConfig.HitTolerance, target.Height)) continue;
+            if (target.History.HitHeight(end.ToNumerics(), _time, 0.45f + NetConfig.HitTolerance, target.Height) is not { } height)
+                continue;
 
             // Walls and pieces still block: stop just short of the hit point so the target itself is not tested.
             var direction = (end - origin).Normalized();
             var clear = end - direction * 0.3f;
             var blocked = space.IntersectRay(PhysicsRayQueryParameters3D.Create(origin, clear,
                 BoardGeometry.WorldLayer | BoardGeometry.PieceLayer, [shooter.Body.GetRid()]));
-            if (blocked.Count == 0) hits++;
+            if (blocked.Count > 0) continue;
+            var head = FighterClasses.IsHeadshot(height);
+            headshot |= head;
+            damage += weapon.Damage * (head ? FighterClasses.HeadshotMultiplier : 1f);
         }
 
         _room.SendAll(MatchChannel.MethodName.ShotFired, (int)shooter.Role, origin, ends);
-        if (hits > 0) Damage(target.Role, weapon.Damage * hits);
+        if (damage > 0f) Damage(target.Role, damage, headshot);
     }
 
     public void OnReload(int peer)
@@ -315,7 +320,7 @@ public partial class ServerDuel : Node
         }
 
         _room.SendAll(MatchChannel.MethodName.ShotFired, (int)shooter.Role, origin, ends);
-        if (hits > 0) Damage(target.Role, weapon.Damage * hits);
+        if (hits > 0) Damage(target.Role, weapon.Damage * hits, headshot: false);
         return true;
     }
 
@@ -360,15 +365,15 @@ public partial class ServerDuel : Node
             foreach (var fighter in new[] { _attacker, _defender })
             {
                 var damage = perk.DamageAt(at.DistanceTo(fighter.Chest));
-                if (damage > 0f) Damage(fighter.Role, damage);
+                if (damage > 0f) Damage(fighter.Role, damage, headshot: false);
             }
         }
     }
 
-    private void Damage(DuelRole target, float amount)
+    private void Damage(DuelRole target, float amount, bool headshot)
     {
         var applied = State.ApplyDamage(target, amount);
-        if (applied > 0f) _room.SendAll(MatchChannel.MethodName.Damaged, (int)target, applied);
+        if (applied > 0f) _room.SendAll(MatchChannel.MethodName.Damaged, (int)target, applied, headshot);
     }
 }
 

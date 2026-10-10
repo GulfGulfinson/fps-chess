@@ -3,7 +3,7 @@ namespace FpsChess.Net;
 public static class NetConfig
 {
     /// <summary>Bump whenever a message changes; client and server must match exactly.</summary>
-    public const int ProtocolVersion = 2;
+    public const int ProtocolVersion = 3;
 
     public const int DefaultPort = 11800;
 

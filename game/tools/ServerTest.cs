@@ -37,6 +37,7 @@ public partial class ServerTest : Node
     private string _roomCode = "";
     private double _sinceShot;
     private bool _cheated;
+    private bool _headshotFired;
     private double _waited;
     private double _moveTime;
     private readonly List<(double Time, Vector3 Position)> _bTrail = [];
@@ -168,6 +169,23 @@ public partial class ServerTest : Node
             Check(_b.DamageTaken == 0, $"a fabricated hit did {_b.DamageTaken} damage");
             return true;
         });
+        Then("a headshot deals one and a half times the damage", delta =>
+        {
+            var attackerAt = BoardGeometry.Center(Square.Parse("e4"));
+            var defenderAt = BoardGeometry.Center(Square.Parse("d5"));
+            _a.SendPose(attackerAt);
+            _b.SendPose(defenderAt);
+            if (!_headshotFired)
+            {
+                _headshotFired = true;
+                var height = PieceModels.Height(PieceType.Pawn);
+                _a.Fire(EyeOf(attackerAt), [defenderAt + Vector3.Up * height * 0.93f], hitMask: 1);
+            }
+            if (_b.DamageTaken == 0) return false;
+            Check(_b.HeadshotTaken, "the server did not report a headshot");
+            Check(Mathf.IsEqualApprox(_b.DamageTaken, 27f), $"a pawn headshot did {_b.DamageTaken} instead of 27");
+            return true;
+        });
         Then("hits on a moving target count where the shooter saw it", delta =>
         {
             var attackerAt = BoardGeometry.Center(Square.Parse("e4"));
@@ -194,7 +212,7 @@ public partial class ServerTest : Node
         {
             Check(_a.DuelEnded == (int)DuelOutcome.AttackerWon, $"duel outcome was {_a.DuelEnded}");
             Check(_b.Moves[2] == ("e4d5", (int)DuelOutcome.AttackerWon), $"B saw {_b.Moves[2]}");
-            Check(_b.DamageTaken > 0, "B never saw the damage");
+            Check(_b.DamageTaken > 27, "B never saw the body hits after the headshot");
             return true;
         });
         Then("B loses the connection and A is told", _ =>
@@ -396,9 +414,13 @@ public partial class ServerTest : Node
             Fighting = stats[SnapshotField.IntroLeft] <= 0f && (int)stats[SnapshotField.Phase] == (int)DuelPhase.Fighting;
         public void OnShotFired(int role, Vector3 origin, Vector3[] ends) { }
 
-        public void OnDamaged(int role, float amount)
+        public bool HeadshotTaken;
+
+        public void OnDamaged(int role, float amount, bool headshot)
         {
-            if ((DuelRole)role == _role) DamageTaken += amount;
+            if ((DuelRole)role != _role) return;
+            DamageTaken += amount;
+            HeadshotTaken |= headshot;
         }
 
         public void OnGrenadeThrown(int role, Vector3 origin, Vector3 velocity) { }
