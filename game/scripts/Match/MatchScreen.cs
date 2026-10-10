@@ -179,8 +179,20 @@ public partial class MatchScreen : Node3D, IMatchClient
 
         _gameOver = new GameOverDialog();
         layer.AddChild(_gameOver);
-        _gameOver.RematchRequested += _main.Rematch;
+        _gameOver.RematchRequested += RequestRematch;
         _gameOver.MenuRequested += () => _main.ShowMenu();
+    }
+
+    /// <summary>Against the computer a new local game starts; online both players have to agree.</summary>
+    private void RequestRematch()
+    {
+        if (VsComputer)
+        {
+            _main.Rematch();
+            return;
+        }
+        Channel.RpcId(1, MatchChannel.MethodName.RequestRematch);
+        _gameOver.SetStatus("Revanche angefragt. Warte auf den Gegner ...");
     }
 
     private bool OverlayOpen => _pause.Visible || _promotion.Visible || _gameOver.Visible || _settings.Visible;
@@ -233,7 +245,6 @@ public partial class MatchScreen : Node3D, IMatchClient
         Deselect();
         RefreshMoveList();
         _hud.SetPlayers(PlayersText());
-        _gameOver.SetRematchVisible(_state.VsComputer);
         if (_game.IsOver) ShowGameOver();
     }
 
@@ -432,6 +443,7 @@ public partial class MatchScreen : Node3D, IMatchClient
     public void OnNotice(string text)
     {
         _hud.ShowToast(text);
+        if (_gameOver.Visible) _gameOver.SetStatus(text);
         if (_pause.Visible) _pause.ShowToast(text);
     }
 

@@ -73,9 +73,13 @@ public partial class NetClient : Node, ILobbyClient
     {
         RoomCode = code;
         SeatToken = token;
-        Channel?.QueueFree();
-        Channel = new MatchChannel { Name = code };
-        _rooms.AddChild(Channel);
+        // A rematch announces the same room again: keep its channel, a second node of that name would get renamed.
+        if (Channel is null || Channel.Name != code)
+        {
+            Channel?.QueueFree();
+            Channel = new MatchChannel { Name = code };
+            _rooms.AddChild(Channel);
+        }
         // Handlers must attach the screen synchronously: the room's first message follows immediately.
         RoomJoined?.Invoke(code, Enum.Parse<PieceColor>(color));
     }

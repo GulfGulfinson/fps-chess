@@ -104,6 +104,10 @@ verbinden. In der Lobby eine Partie erstellen (Bedenkzeit, Farbe) oder einer off
 Liste oder mit dem vierstelligen Raumcode. Bricht die Verbindung ab, verbindet sich das Spiel neu; der Platz bleibt
 60 Sekunden reserviert.
 
+Nach einer Online-Partie startet "Revanche" eine neue Partie im selben Raum, sobald beide zustimmen; die Farben
+werden getauscht. Mausempfindlichkeit, Sichtfeld, Lautstärke und Grafik stehen unter "Einstellungen" (Hauptmenü und
+Pause-Menü), die Regeln mit allen Figurenwerten unter "Anleitung".
+
 Ohne Internet: "Im LAN hosten" startet den Server im eigenen Spiel, die anderen tragen die angezeigte Adresse
 (`ws://<IP>:11800`) als Server ein.
 

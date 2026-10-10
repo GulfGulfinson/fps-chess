@@ -7,6 +7,7 @@ public partial class GameOverDialog : Control
 {
     private Label _result = null!;
     private Button _rematch = null!;
+    private Label _status = null!;
 
     public event Action? RematchRequested;
     public event Action? MenuRequested;
@@ -45,15 +46,22 @@ public partial class GameOverDialog : Control
         buttons.AddChild(UiTheme.Button("Hauptmenü", () => MenuRequested?.Invoke(), 140));
         buttons.AddChild(UiTheme.Button("Brett ansehen", Close, 160));
         column.AddChild(buttons);
+        _status = UiTheme.Label("", 16, UiTheme.Accent);
+        _status.HorizontalAlignment = HorizontalAlignment.Center;
+        column.AddChild(_status);
         panel.AddChild(column);
         center.AddChild(panel);
     }
 
     public void SetRematchVisible(bool visible) => _rematch.Visible = visible;
 
+    /// <summary>A line under the buttons, e.g. "Warte auf den Gegner".</summary>
+    public void SetStatus(string text) => _status.Text = text;
+
     public void Open(string result)
     {
         _result.Text = result;
+        _status.Text = "";
         Visible = true;
     }
 

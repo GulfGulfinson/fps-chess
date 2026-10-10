@@ -38,6 +38,8 @@ public partial class ServerTest : Node
     private double _sinceShot;
     private bool _cheated;
     private bool _headshotFired;
+    private bool _rematchAsked;
+    private bool _rematchAccepted;
     private double _waited;
     private double _moveTime;
     private readonly List<(double Time, Vector3 Position)> _bTrail = [];
@@ -260,6 +262,32 @@ public partial class ServerTest : Node
                 _bBack.Channel.RpcId(1, MatchChannel.MethodName.Resign);
             }
             return _a.LastState?.ForfeitStatus == "Resignation" && _bBack.LastState?.ForfeitStatus == "Resignation";
+        });
+
+        Then("a rematch request is shown to the opponent", _ =>
+        {
+            if (!_rematchAsked)
+            {
+                _rematchAsked = true;
+                _bBack!.Notices.Clear();
+                _a.Channel.RpcId(1, MatchChannel.MethodName.RequestRematch);
+            }
+            return _bBack!.Notices.Any(n => n.Contains("Revanche"));
+        });
+        Then("when both agree a fresh game starts with colours swapped", _ =>
+        {
+            if (!_rematchAccepted)
+            {
+                _rematchAccepted = true;
+                _bBack!.Channel.RpcId(1, MatchChannel.MethodName.RequestRematch);
+            }
+            return _a.Color == PieceColor.Black && _bBack!.Color == PieceColor.White &&
+                   _a.LastState is { Moves.Count: 0, ForfeitStatus: null } && _bBack.LastState is { Moves.Count: 0, ForfeitStatus: null };
+        });
+        Then("the rematch is playable", _ =>
+        {
+            if (!_bBack!.Sent.Contains("d2d4")) _bBack.Submit("d2d4");
+            return _a.Moves.Count > 3 && _a.Moves[^1].Uci == "d2d4";
         });
 
         // ---- scenario 2: against the computer, which must fight on its own

@@ -155,6 +155,10 @@ public partial class LobbyServer : Node, ILobbyServer
 
     public bool IsConnected(int peer) => _names.ContainsKey(peer);
 
+    /// <summary>Tells a player (again) which seat they hold, e.g. after a rematch swapped the colours.</summary>
+    public void AnnounceSeat(int peer, MatchRoom room, PieceColor color) =>
+        _lobby.RpcId(peer, LobbyChannel.MethodName.RoomJoined, room.Code, color.ToString(), room.TokenFor(color));
+
     private string NewCode()
     {
         string code;

@@ -14,6 +14,7 @@ public interface IMatchServer
     void OnReload(int peer);
     void OnDash(int peer);
     void OnThrowGrenade(int peer, Vector3 origin, Vector3 velocity);
+    void OnRematchRequested(int peer);
 }
 
 public interface IMatchClient
@@ -78,6 +79,10 @@ public partial class MatchChannel : Node
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
     public void ThrowGrenade(Vector3 origin, Vector3 velocity) => Server?.OnThrowGrenade(Sender, origin, velocity);
+
+    /// <summary>After a finished online game: play again in the same room with colours swapped once both ask.</summary>
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    public void RequestRematch() => Server?.OnRematchRequested(Sender);
 
     // ---- server to client
 

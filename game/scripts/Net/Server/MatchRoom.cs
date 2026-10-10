@@ -22,6 +22,8 @@ public partial class MatchRoom : Node, IMatchServer
     // Seconds since a seated player lost the connection; their seat is kept for a while.
     private readonly Dictionary<PieceColor, double> _absentFor = [];
     private string? _currentDuelJson;
+    private readonly HashSet<PieceColor> _rematchWanted = [];
+    private SubViewport _viewport = null!;
     private LobbyServer _lobby = null!;
     private MatchChannel _channel = null!;
     private RoomSettings _settings = null!;
@@ -29,7 +31,7 @@ public partial class MatchRoom : Node, IMatchServer
     private SavedGame? _save;
     private GameSession? _session;
     private ServerDuel? _duel;
-    private Node3D _world = null!;
+    private Node3D? _world;
     private double _sinceClockSync;
 
     public string Code { get; private set; } = "";
@@ -93,12 +95,19 @@ public partial class MatchRoom : Node, IMatchServer
             if (_setup.PlayerFor(color) == PlayerKind.Computer) _names[color] = $"Computer (Stufe {_setup.AiLevel})";
         }
 
-        var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled, Size = new Vector2I(2, 2) };
-        AddChild(viewport);
-        _world = new Node3D { Name = "World" };
-        viewport.AddChild(_world);
-        ArenaBuilder.Build(_world, Theme, visuals: false);
+        _viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled, Size = new Vector2I(2, 2) };
+        AddChild(_viewport);
+        BuildWorld();
         return null;
+    }
+
+    /// <summary>The room's own physics world with the current theme's table and obstacles.</summary>
+    private void BuildWorld()
+    {
+        _world?.QueueFree();
+        _world = new Node3D { Name = "World" };
+        _viewport.AddChild(_world);
+        ArenaBuilder.Build(_world, Theme, visuals: false);
     }
 
     private PieceColor? _preferredColor;
@@ -207,7 +216,7 @@ public partial class MatchRoom : Node, IMatchServer
 
         _duel = new ServerDuel();
         AddChild(_duel);
-        _duel.Init(this, _world, pending, _session!.Game.Position, _setup.AiLevel,
+        _duel.Init(this, _world!, pending, _session!.Game.Position, _setup.AiLevel,
             PeerOf(pending.Attacker.Color), PeerOf(pending.Defender.Color));
         _currentDuelJson = NetJson.Write(dto);
         SendAll(MatchChannel.MethodName.DuelStarted, _currentDuelJson);
@@ -276,6 +285,44 @@ public partial class MatchRoom : Node, IMatchServer
             return;
         }
         _channel.RpcId(peer, MatchChannel.MethodName.SaveData, GameSerializer.Serialize(_session.ToSave()));
+    }
+
+    public void OnRematchRequested(int peer)
+    {
+        if (_session is not { Game.IsOver: true } || _settings.VsComputer || ColorOf(peer) is not { } color) return;
+        _rematchWanted.Add(color);
+
+        var everyoneAsked = HumanColors.All(c => _rematchWanted.Contains(c) && _seats.TryGetValue(c, out var p) && _lobby.IsConnected(p));
+        if (everyoneAsked)
+        {
+            StartRematch();
+            return;
+        }
+        foreach (var other in Peers.Where(p => p != peer))
+            _channel.RpcId(other, MatchChannel.MethodName.Notice, $"{_names[color]} möchte eine Revanche.");
+    }
+
+    /// <summary>Same players, colours swapped, a fresh room theme.</summary>
+    private void StartRematch()
+    {
+        _rematchWanted.Clear();
+        (_seats[PieceColor.White], _seats[PieceColor.Black]) = (_seats[PieceColor.Black], _seats[PieceColor.White]);
+        (_names[PieceColor.White], _names[PieceColor.Black]) = (_names[PieceColor.Black], _names[PieceColor.White]);
+        (_tokens[PieceColor.White], _tokens[PieceColor.Black]) = (_tokens[PieceColor.Black], _tokens[PieceColor.White]);
+
+        _session!.MovePlayed -= OnMovePlayed;
+        _session.DuelStarted -= OnDuelStarted;
+        _session.GameEnded -= OnGameEnded;
+        _session.Dispose();
+        _session = null;
+        _save = null;
+        Theme = ArenaTheme.Random();
+        BuildWorld();
+
+        // The new seat comes first so each client rebuilds its screen before the new game state arrives.
+        foreach (var (color, peer) in _seats) _lobby.AnnounceSeat(peer, this, color);
+        GD.Print($"[room {Code}] rematch");
+        StartGame();
     }
 
     public void OnPauseRequested(int peer, bool paused)
