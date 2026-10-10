@@ -5,12 +5,14 @@ namespace FpsChess.Arena;
 
 /// <summary>
 /// Builds the giant 3D pieces from primitive meshes, so the project needs no model files.
-/// Models stand on y = 0 and face -Z (towards black); black pieces are turned around by the caller.
+/// The primitives of one piece type are merged into a single cached mesh: one draw call per piece
+/// instead of a dozen. Models stand on y = 0 and face -Z (towards black).
 /// </summary>
 public static class PieceModels
 {
     private static StandardMaterial3D? _white;
     private static StandardMaterial3D? _black;
+    private static readonly Dictionary<PieceType, ArrayMesh> Meshes = [];
 
     public static StandardMaterial3D Material(PieceColor color) => color == PieceColor.White
         ? _white ??= new StandardMaterial3D
@@ -29,6 +31,32 @@ public static class PieceModels
             Rim = 0.4f,
         };
 
+    private static readonly Dictionary<PieceColor, StandardMaterial3D> Dimmed = [];
+    private static StandardMaterial3D? _enemyOutline;
+
+    /// <summary>Uninvolved pieces during a duel: darker and flat, so the opponent stands out.</summary>
+    public static StandardMaterial3D DimmedMaterial(PieceColor color)
+    {
+        if (Dimmed.TryGetValue(color, out var cached)) return cached;
+        var material = new StandardMaterial3D
+        {
+            AlbedoColor = Material(color).AlbedoColor.Darkened(color == PieceColor.White ? 0.55f : 0.2f) with { A = 1f },
+            Roughness = 0.9f,
+        };
+        Dimmed[color] = material;
+        return material;
+    }
+
+    /// <summary>Inverted-hull outline drawn over the opponent in a duel.</summary>
+    public static StandardMaterial3D EnemyOutline => _enemyOutline ??= new StandardMaterial3D
+    {
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        AlbedoColor = new Color(1f, 0.22f, 0.12f),
+        CullMode = BaseMaterial3D.CullModeEnum.Front,
+        Grow = true,
+        GrowAmount = 0.07f,
+    };
+
     /// <summary>Models are authored large and scaled down so the player (eye height 1.7 m) can see over the pawns.</summary>
     public const float Scale = 0.62f;
 
@@ -45,27 +73,34 @@ public static class PieceModels
         _ => 4.7f,
     };
 
-    public static Node3D Build(Piece piece)
+    /// <summary>A piece model; black pieces are turned to face white.</summary>
+    public static MeshInstance3D Build(Piece piece) => new()
     {
-        var root = new Node3D { Name = $"{piece.Color}{piece.Type}", Scale = new Vector3(Scale, Scale, Scale) };
-        var material = Material(piece.Color);
+        Name = $"{piece.Color}{piece.Type}",
+        Mesh = MeshFor(piece.Type),
+        MaterialOverride = Material(piece.Color),
+        RotationDegrees = piece.Color == PieceColor.Black ? new Vector3(0, 180, 0) : Vector3.Zero,
+    };
+
+    public static ArrayMesh MeshFor(PieceType type)
+    {
+        if (Meshes.TryGetValue(type, out var cached)) return cached;
+
+        var tool = new SurfaceTool();
+        tool.Begin(Mesh.PrimitiveType.Triangles);
+        var root = Transform3D.Identity.Scaled(new Vector3(Scale, Scale, Scale));
         void Add(Mesh mesh, Vector3 position, Vector3? rotationDegrees = null, Vector3? scale = null)
         {
-            root.AddChild(new MeshInstance3D
-            {
-                Mesh = mesh,
-                Position = position,
-                RotationDegrees = rotationDegrees ?? Vector3.Zero,
-                Scale = scale ?? Vector3.One,
-                MaterialOverride = material,
-            });
+            var rotation = (rotationDegrees ?? Vector3.Zero) * (Mathf.Pi / 180f);
+            var basis = new Basis(Quaternion.FromEuler(rotation)) * Basis.FromScale(scale ?? Vector3.One);
+            tool.AppendFrom(mesh, 0, root * new Transform3D(basis, position));
         }
 
         // Shared pedestal.
         Add(Cylinder(0.95f, 1.1f, 0.3f), new Vector3(0, 0.15f, 0));
         Add(Torus(0.7f, 1.0f), new Vector3(0, 0.36f, 0));
 
-        switch (piece.Type)
+        switch (type)
         {
             case PieceType.Pawn:
                 Add(Cylinder(0.32f, 0.7f, 1.2f), new Vector3(0, 1.0f, 0));
@@ -124,16 +159,17 @@ public static class PieceModels
                 break;
         }
 
-        if (piece.Color == PieceColor.Black) root.RotationDegrees = new Vector3(0, 180, 0);
-        return root;
+        var merged = tool.Commit();
+        Meshes[type] = merged;
+        return merged;
     }
 
     private static CylinderMesh Cylinder(float top, float bottom, float height) =>
-        new() { TopRadius = top, BottomRadius = bottom, Height = height, RadialSegments = 40 };
+        new() { TopRadius = top, BottomRadius = bottom, Height = height, RadialSegments = 18, Rings = 1 };
 
     private static SphereMesh Sphere(float radius) =>
-        new() { Radius = radius, Height = radius * 2f, RadialSegments = 32, Rings = 16 };
+        new() { Radius = radius, Height = radius * 2f, RadialSegments = 16, Rings = 8 };
 
     private static TorusMesh Torus(float inner, float outer) =>
-        new() { InnerRadius = inner, OuterRadius = outer, Rings = 32, RingSegments = 16 };
+        new() { InnerRadius = inner, OuterRadius = outer, Rings = 18, RingSegments = 8 };
 }

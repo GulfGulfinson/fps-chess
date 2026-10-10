@@ -22,12 +22,23 @@ public partial class Capture : Node
     private string? _submit;
     private int _fireFrame = -1;
     private int _frame;
+    private ulong _benchStart;
+    private readonly SortedSet<double> _times = [];
+    private double _elapsed;
+    private bool _submitted;
 
     public override void _Ready()
     {
         var args = ParseArgs(OS.GetCmdlineUserArgs());
         _out = args.GetValueOrDefault("out", _out);
-        foreach (var shot in args.GetValueOrDefault("shots", "90").Split(',')) _shots.Add(int.Parse(shot));
+        if (args.TryGetValue("times", out var times))
+        {
+            foreach (var time in times.Split(',')) _times.Add(double.Parse(time, System.Globalization.CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            foreach (var shot in args.GetValueOrDefault("shots", "90").Split(',')) _shots.Add(int.Parse(shot));
+        }
         _submit = args.GetValueOrDefault("submit");
         if (args.TryGetValue("fire", out var fire)) _fireFrame = int.Parse(fire);
 
@@ -85,8 +96,9 @@ public partial class Capture : Node
         if (_frame == 120 && _main.FindChild("Client", true, false) is NetClient lanClient && _main.Match is null && _submit == "create")
             lanClient.CreateRoom(new RoomSettings { PlayerName = "Tester", Public = true });
 
-        if (_frame == 45 && _submit is not null && _submit != "create" && _main.FindChild("Client", true, false) is NetClient { Channel: { } channel })
+        if (!_submitted && _elapsed >= 1.5 && _submit is not null && _submit != "create" && _main.FindChild("Client", true, false) is NetClient { Channel: { } channel })
         {
+            _submitted = true;
             foreach (var uci in _submit.Split(',')) channel.RpcId(1, MatchChannel.MethodName.SubmitMove, uci);
         }
 
@@ -97,7 +109,16 @@ public partial class Capture : Node
             Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = _frame == _fireFrame });
         }
 
-        if (_frame % 30 == 0)
+        // Benchmark: average frame rate over frames 120 to 420, measured in real time.
+        if (_frame == 120) _benchStart = Time.GetTicksUsec();
+        if (_frame == 420 && _benchStart > 0)
+        {
+            var seconds = (Time.GetTicksUsec() - _benchStart) / 1e6;
+            GD.Print($"[bench] {300 / seconds:0.0} fps average, {Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)} draw calls, " +
+                     $"{Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame) / 1000:0}k primitives, window {DisplayServer.WindowGetSize()}");
+        }
+
+        if (_frame % 30 == 0 && OS.GetCmdlineUserArgs().Contains("--perf"))
         {
             GD.Print($"[perf] frame {_frame}: {Engine.GetFramesPerSecond()} fps, " +
                      $"{Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)} draw calls, " +
@@ -106,6 +127,20 @@ public partial class Capture : Node
                      $"process {Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:0.0} ms, " +
                      $"physics {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:0.0} ms, " +
                      $"window {DisplayServer.WindowGetSize()}");
+        }
+
+        // Time-based screenshots (seconds since start) for sequences, independent of the frame rate.
+        _elapsed += delta;
+        if (_times.Count > 0)
+        {
+            if (_elapsed < _times.Min) return;
+            var at = _times.Min;
+            _times.Remove(at);
+            var timed = _out.Replace(".png", $"_{at:0.0}s.png");
+            GetViewport().GetTexture().GetImage().SavePng(timed);
+            GD.Print($"Capture saved to {timed} at frame {_frame}");
+            if (_times.Count == 0) GetTree().Quit();
+            return;
         }
 
         if (!_shots.Contains(_frame)) return;

@@ -17,6 +17,48 @@ public static class Texts
         _ => "König",
     };
 
+    // German grammar for the duel announcement: the queen is feminine, every other piece masculine,
+    // and "Bauer" takes an n in the accusative ("den Bauern").
+    private static bool Feminine(PieceType type) => type == PieceType.Queen;
+
+    private static string Accusative(PieceType type) => type == PieceType.Pawn ? "Bauern" : Piece(type);
+
+    private static string ColorAdjective(PieceColor color, bool feminineOrNominative) =>
+        (color == PieceColor.White ? "weiße" : "schwarze") + (feminineOrNominative ? "" : "n");
+
+    /// <summary>"Der schwarze Turm greift deinen Bauern auf e4 an!" or "Deine Dame greift den weißen Läufer auf c4 an!"</summary>
+    public static string AttackAnnouncement(Chess.Core.Piece attacker, Chess.Core.Piece defender, Square at, PieceColor me)
+    {
+        string subject;
+        string target;
+        if (attacker.Color == me)
+        {
+            subject = (Feminine(attacker.Type) ? "Deine " : "Dein ") + Piece(attacker.Type);
+            target = Feminine(defender.Type)
+                ? $"die {ColorAdjective(defender.Color, true)} {Piece(defender.Type)}"
+                : $"den {ColorAdjective(defender.Color, false)} {Accusative(defender.Type)}";
+        }
+        else
+        {
+            subject = $"{(Feminine(attacker.Type) ? "Die" : "Der")} {ColorAdjective(attacker.Color, true)} {Piece(attacker.Type)}";
+            target = Feminine(defender.Type) ? $"deine {Piece(defender.Type)}" : $"deinen {Accusative(defender.Type)}";
+        }
+        return $"{subject} greift {target} auf {at} an!";
+    }
+
+    public static string Perk(Chess.Core.Duels.FighterClass fighter)
+    {
+        var perks = new List<string>();
+        if (fighter.DoubleJump) perks.Add("Doppelsprung");
+        if (fighter.ZoomFov is not null) perks.Add("Zielfernrohr");
+        if (fighter.Dash is not null) perks.Add("Dash");
+        if (fighter.Grenades is { } grenades) perks.Add($"{grenades.Count} Granaten");
+        if (fighter.Regeneration is not null) perks.Add("Regeneration");
+        if (fighter.DamageTakenMultiplier < 1f) perks.Add($"Panzerung ({1f - fighter.DamageTakenMultiplier:P0} weniger Schaden)");
+        if (fighter.Weapon.SpinUpSeconds > 0) perks.Add("muss anlaufen");
+        return perks.Count == 0 ? "keine" : string.Join(", ", perks);
+    }
+
     public static string PlayerShort(PlayerKind kind) => kind == PlayerKind.Human ? "Mensch" : "Computer";
 
     public static string Player(GameSetup setup, PieceColor color) =>

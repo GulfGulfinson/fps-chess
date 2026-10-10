@@ -85,6 +85,9 @@ public partial class MatchScreen : Node3D, IMatchClient
     private LocalFighter? _fighter;
     private RemoteFighter? _opponent;
     private readonly List<PieceActor> _hiddenActors = [];
+    private Node3D? _attackArrow;
+    private VersusCard _versus = null!;
+    private int _duelCounter;
     private float _serverAttackerHealth;
     private float _serverDefenderHealth;
     private float _serverTimeLeft = DuelState.TimeLimitSeconds;
@@ -133,6 +136,9 @@ public partial class MatchScreen : Node3D, IMatchClient
         layer.AddChild(_hud);
         _duelHud = new DuelHud { Visible = false };
         layer.AddChild(_duelHud);
+
+        _versus = new VersusCard { Visible = false };
+        layer.AddChild(_versus);
 
         _pause = new PauseMenu();
         layer.AddChild(_pause);
@@ -197,6 +203,11 @@ public partial class MatchScreen : Node3D, IMatchClient
             _hud.ShowBanner(ArenaTheme.Get(theme).Name, UiTheme.Accent);
         }
 
+        if (_phase != Phase.Board && _game.PendingDuel is null)
+        {
+            _afterDuel.Clear();
+            EndDuel();
+        }
         SyncPieces();
         Deselect();
         RefreshMoveList();
@@ -300,6 +311,11 @@ public partial class MatchScreen : Node3D, IMatchClient
 
         var (position, yaw) = _myRole == DuelRole.Attacker ? (defender, defenderYaw) : (attacker, attackerYaw);
         _opponent?.SetPose(position, yaw);
+        if (_opponent is not null && _localDuel is not null)
+        {
+            var enemy = _myRole == DuelRole.Attacker ? _localDuel.Defender : _localDuel.Attacker;
+            _opponent.SetHealth(_myRole == DuelRole.Attacker ? _serverDefenderHealth : _serverAttackerHealth, enemy.Class.MaxHealth);
+        }
     }
 
     public void OnShotFired(int role, Vector3 origin, Vector3[] ends)
@@ -308,7 +324,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         var attackerColor = Enum.Parse<PieceColor>(_duelInfo!.AttackerColor);
         var shooterColor = (DuelRole)role == DuelRole.Attacker ? attackerColor : attackerColor.Opponent();
         var color = shooterColor == PieceColor.White ? WhiteShot : BlackShot;
-        foreach (var end in ends) Effects.Tracer(_effects, _opponent.Head, end, color);
+        for (var i = 0; i < ends.Length; i++) Effects.Tracer(_effects, _opponent.Head, ends[i], color, flash: i == 0);
     }
 
     public void OnDamaged(int role, float amount)
@@ -711,56 +727,159 @@ public partial class MatchScreen : Node3D, IMatchClient
 
     // ================================================================ duel phase
 
+    // Timeline of the intro, in seconds after the capture; the server's NetConfig.DuelIntroSeconds covers all of it.
+    private const double VersusCardAt = 1.3;
+    private const double FlyInAt = 3.0;
+    private const float FlyInSeconds = 1.05f;
+
+    /// <summary>
+    /// Shows who attacks whom before the duel: an arrow and a lunge on the board with a banner, then a
+    /// versus card with both fighters, then the camera flies into the player's own piece.
+    /// </summary>
     private void StartDuelIntro(Square attackerSquare, Square defenderSquare, PieceType attackerType, PieceType defenderType)
     {
         _phase = Phase.DuelIntro;
+        var duelId = ++_duelCounter;
         _gameOver.Visible = false;
-        _hud.Visible = false;
+        Deselect();
         Input.SetDefaultCursorShape(Input.CursorShape.Arrow);
-        foreach (var overlay in _overlays) overlay.Visible = false;
 
         var attackerColor = Enum.Parse<PieceColor>(_duelInfo!.AttackerColor);
+        var attacker = new Piece(attackerType, attackerColor);
+        var defender = new Piece(defenderType, attackerColor.Opponent());
         var mine = _myRole == DuelRole.Attacker ? attackerSquare : defenderSquare;
         var theirs = _myRole == DuelRole.Attacker ? defenderSquare : attackerSquare;
-        var myType = _myRole == DuelRole.Attacker ? attackerType : defenderType;
-        var theirType = _myRole == DuelRole.Attacker ? defenderType : attackerType;
-        var theirColor = _myRole == DuelRole.Attacker ? attackerColor.Opponent() : attackerColor;
+        var myPiece = _myRole == DuelRole.Attacker ? attacker : defender;
+        var theirPiece = _myRole == DuelRole.Attacker ? defender : attacker;
+        var opponentOwner = theirPiece.Color == PieceColor.White ? _state!.White.Name : _state!.Black.Name;
 
-        foreach (var square in new[] { attackerSquare, defenderSquare })
+        // Stage 1: on the board, who attacks whom.
+        var attackerAt = BoardGeometry.Center(attackerSquare);
+        var defenderAt = BoardGeometry.Center(defenderSquare);
+        foreach (var overlay in _overlays) overlay.Visible = false;
+        ShowOverlay(attackerSquare, Highlight.Selected);
+        ShowOverlay(defenderSquare, Highlight.Capture);
+        _attackArrow = AttackArrow(attackerAt, defenderAt, attackerColor == PieceColor.White ? WhiteShot : BlackShot);
+        _world.AddChild(_attackArrow);
+        if (_actors.TryGetValue(attackerSquare, out var lunging)) Lunge(lunging, defenderAt);
+        _hud.ShowBanner(Texts.AttackAnnouncement(attacker, defender, defenderSquare, _myColor), new Color("ff6a4f"));
+
+        // Stage 2: introduce both fighters.
+        After(VersusCardAt, () =>
         {
-            if (!_actors.TryGetValue(square, out var actor)) continue;
-            actor.Visible = false;
-            actor.CollisionLayer = 0;
-            _hiddenActors.Add(actor);
+            if (duelId != _duelCounter || _phase != Phase.DuelIntro) return;
+            _versus.Open(FighterClasses.For(myPiece.Type), FighterClasses.For(theirPiece.Type), opponentOwner,
+                _myRole == DuelRole.Attacker);
+        });
+
+        // Stage 3: into the fighter's eyes.
+        After(FlyInAt, () =>
+        {
+            if (duelId != _duelCounter || _phase != Phase.DuelIntro) return;
+            _versus.Visible = false;
+            _hud.Visible = false;
+            _attackArrow?.QueueFree();
+            _attackArrow = null;
+            foreach (var overlay in _overlays) overlay.Visible = false;
+            SpawnFighters(mine, theirs, myPiece, theirPiece, opponentOwner);
+
+            _camera.Orbiting = false;
+            var tween = CreateTween();
+            tween.TweenProperty(_camera, "global_transform", _fighter!.Camera.GlobalTransform, FlyInSeconds)
+                .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.InOut);
+            tween.TweenCallback(Callable.From(() =>
+            {
+                if (_fighter is null || duelId != _duelCounter) return;
+                _fighter.Camera.Current = true;
+                _duelHud.Visible = true;
+                if (!OverlayOpen) Input.MouseMode = Input.MouseModeEnum.Captured;
+                if (_phase == Phase.DuelIntro) _phase = Phase.Duel;
+            }));
+        });
+    }
+
+    private void SpawnFighters(Square mine, Square theirs, Piece myPiece, Piece theirPiece, string opponentOwner)
+    {
+        foreach (var (square, actor) in _actors)
+        {
+            if (square == mine || square == theirs)
+            {
+                actor.Visible = false;
+                actor.CollisionLayer = 0;
+                _hiddenActors.Add(actor);
+            }
+            else
+            {
+                actor.SetDimmed(true);
+            }
         }
 
         var myAt = BoardGeometry.Center(mine);
         var theirAt = BoardGeometry.Center(theirs);
-
         _opponent = new RemoteFighter();
-        _opponent.Init(new Piece(theirType, theirColor), theirAt, BoardGeometry.YawTowards(theirAt, myAt));
+        _opponent.Init(theirPiece, theirAt, BoardGeometry.YawTowards(theirAt, myAt), opponentOwner);
         _world.AddChild(_opponent);
+        var theirHealth = _myRole == DuelRole.Attacker ? _serverDefenderHealth : _serverAttackerHealth;
+        _opponent.SetHealth(theirHealth, FighterClasses.For(theirPiece.Type).MaxHealth);
 
         _fighter = new LocalFighter { Position = myAt, Rotation = new Vector3(0, BoardGeometry.YawTowards(myAt, theirAt), 0) };
-        _fighter.Init(myType, _myColor);
+        _fighter.Init(myPiece.Type, _myColor);
         _world.AddChild(_fighter);
 
-        var opponentOwner = theirColor == PieceColor.White ? _state!.White.Name : _state!.Black.Name;
-        _duelHud.Setup(FighterClasses.For(myType), FighterClasses.For(theirType), opponentOwner);
+        _duelHud.Setup(FighterClasses.For(myPiece.Type), FighterClasses.For(theirPiece.Type), opponentOwner);
+    }
 
-        // Fly from the board view into the fighter's eyes.
-        _camera.Orbiting = false;
-        var tween = CreateTween();
-        tween.TweenProperty(_camera, "global_transform", _fighter.Camera.GlobalTransform, NetConfig.DuelIntroSeconds * 0.85f)
-            .SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.InOut);
-        tween.TweenCallback(Callable.From(() =>
+    private void ShowOverlay(Square square, Highlight highlight)
+    {
+        var overlay = _overlays[square.Index];
+        overlay.Visible = true;
+        overlay.MaterialOverride = HighlightMaterial(highlight);
+    }
+
+    /// <summary>A glowing arrow along the board from the attacker to its target.</summary>
+    private static Node3D AttackArrow(Vector3 from, Vector3 to, Color color)
+    {
+        var material = new StandardMaterial3D
         {
-            if (_fighter is null) return;
-            _fighter.Camera.Current = true;
-            _duelHud.Visible = true;
-            if (!OverlayOpen) Input.MouseMode = Input.MouseModeEnum.Captured;
-            if (_phase == Phase.DuelIntro) _phase = Phase.Duel;
-        }));
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = color,
+            EmissionEnabled = true,
+            Emission = color,
+            EmissionEnergyMultiplier = 2f,
+        };
+        var root = new Node3D { Position = from + Vector3.Up * 0.6f, Rotation = new Vector3(0, BoardGeometry.YawTowards(from, to), 0) };
+        var length = from.DistanceTo(to) - 1.4f;
+        // Built along -Z (the forward direction of the yaw).
+        root.AddChild(new MeshInstance3D
+        {
+            Mesh = new CylinderMesh { TopRadius = 0.12f, BottomRadius = 0.12f, Height = length, RadialSegments = 8 },
+            Position = new Vector3(0, 0, -length / 2f - 0.3f),
+            RotationDegrees = new Vector3(90, 0, 0),
+            MaterialOverride = material,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+        root.AddChild(new MeshInstance3D
+        {
+            Mesh = new CylinderMesh { TopRadius = 0f, BottomRadius = 0.45f, Height = 0.9f, RadialSegments = 12 },
+            Position = new Vector3(0, 0, -length - 0.7f),
+            RotationDegrees = new Vector3(-90, 0, 0),
+            MaterialOverride = material,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+        var pulse = root.CreateTween().SetLoops();
+        pulse.TweenProperty(material, "emission_energy_multiplier", 4f, 0.35f);
+        pulse.TweenProperty(material, "emission_energy_multiplier", 1.5f, 0.35f);
+        return root;
+    }
+
+    /// <summary>The attacker jumps a little towards its target and back.</summary>
+    private void Lunge(PieceActor actor, Vector3 target)
+    {
+        var home = actor.Position;
+        var toward = home.Lerp(target, 0.35f) + Vector3.Up * 0.8f;
+        var tween = actor.CreateTween();
+        tween.TweenProperty(actor, "position", toward, 0.35f).SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        tween.TweenProperty(actor, "position", home, 0.45f).SetTrans(Tween.TransitionType.Bounce).SetEase(Tween.EaseType.Out);
     }
 
     private void HandleDuelInput(InputEvent @event)
@@ -850,7 +969,7 @@ public partial class MatchScreen : Node3D, IMatchClient
                 BoardGeometry.WorldLayer | BoardGeometry.PieceLayer, [_fighter.GetRid()]));
             ends[i] = hit.Count > 0 ? hit["position"].AsVector3() : origin + directions[i] * weapon.MaxRange;
             if (hit.Count > 0 && hit["collider"].AsGodotObject() == _opponent) hitMask |= 1 << i;
-            Effects.Tracer(_effects, _fighter.Weapon.MuzzlePosition, ends[i], color);
+            Effects.Tracer(_effects, _fighter.Weapon.MuzzlePosition, ends[i], color, flash: i == 0);
         }
         if (hitMask != 0) _duelHud.HitMarker();
         _fighter.Weapon.Recoil();
@@ -882,22 +1001,28 @@ public partial class MatchScreen : Node3D, IMatchClient
         }
     }
 
+    /// <summary>Leaves the duel view; also called when a game ends while the intro is still running.</summary>
     private void EndDuel()
     {
-        if (_fighter is null) return;
+        if (_phase == Phase.Board) return;
+        _duelCounter++;
 
-        // Fly back up from wherever the fighter ended.
-        _camera.GlobalTransform = _fighter.Camera.GlobalTransform;
+        // Fly back up from wherever the fighter ended (or straight from the board if it never spawned).
+        if (_fighter is not null) _camera.GlobalTransform = _fighter.Camera.GlobalTransform;
         _camera.Current = true;
         _duelHud.Visible = false;
         _duelHud.SetZoomed(false);
         Input.MouseMode = Input.MouseModeEnum.Visible;
 
-        _fighter.QueueFree();
+        _fighter?.QueueFree();
         _fighter = null;
         _opponent?.QueueFree();
         _opponent = null;
         _localDuel = null;
+        _versus.Visible = false;
+        _attackArrow?.QueueFree();
+        _attackArrow = null;
+        foreach (var actor in _actors.Values) actor.SetDimmed(false);
         foreach (var grenade in _grenades) grenade.Body.QueueFree();
         _grenades.Clear();
 

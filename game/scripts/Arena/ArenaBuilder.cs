@@ -131,7 +131,7 @@ public sealed class ArenaBuilder
             TonemapMode = Godot.Environment.ToneMapper.Aces,
             GlowEnabled = true,
             GlowIntensity = 0.5f,
-            SsaoEnabled = true,
+            // No SSAO: it costs a large share of the frame on integrated GPUs for little visible gain here.
             FogEnabled = true,
             FogLightColor = _theme.Walls.Darkened(0.4f),
             FogDensity = 0.003f,
@@ -143,7 +143,8 @@ public sealed class ArenaBuilder
             LightColor = _theme.KeyLight,
             LightEnergy = _theme.KeyEnergy,
             ShadowEnabled = true,
-            DirectionalShadowMaxDistance = 120f,
+            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel2Splits,
+            DirectionalShadowMaxDistance = 90f,
         });
 
         const float roomHalf = 130f;

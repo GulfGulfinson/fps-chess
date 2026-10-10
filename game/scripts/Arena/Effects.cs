@@ -5,7 +5,8 @@ namespace FpsChess.Arena;
 /// <summary>Short-lived visual effects: laser tracers, muzzle flashes and debris bursts.</summary>
 public static class Effects
 {
-    public static void Tracer(Node3D parent, Vector3 from, Vector3 to, Color color)
+    /// <param name="flash">Light up the muzzle; a shotgun asks for it once per shot, not once per pellet.</param>
+    public static void Tracer(Node3D parent, Vector3 from, Vector3 to, Color color, bool flash = true)
     {
         var length = from.DistanceTo(to);
         if (length < 0.01f) return;
@@ -32,13 +33,36 @@ public static class Effects
         var side = Mathf.Abs(up.Dot(Vector3.Up)) > 0.99f ? Vector3.Right : up.Cross(Vector3.Up).Normalized();
         beam.GlobalBasis = new Basis(side, up, side.Cross(up));
 
-        Flash(parent, from, color, 0.12f);
-        Flash(parent, to, color, 0.25f);
+        if (flash) Flash(parent, from, color, 0.08f);
+        Spark(parent, to, color);
 
         var tween = beam.CreateTween();
         tween.TweenProperty(material, "albedo_color:a", 0f, 0.3f);
         tween.TweenCallback(Callable.From(beam.QueueFree));
     }
+
+    /// <summary>A small glowing dot where a shot landed: cheaper than a light, still easy to see.</summary>
+    private static void Spark(Node3D parent, Vector3 at, Color color)
+    {
+        var spark = new MeshInstance3D
+        {
+            Mesh = SparkMesh,
+            MaterialOverride = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                AlbedoColor = color,
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        parent.AddChild(spark);
+        spark.GlobalPosition = at;
+        var tween = spark.CreateTween();
+        tween.TweenProperty(spark, "scale", Vector3.One * 0.2f, 0.25f);
+        tween.TweenCallback(Callable.From(spark.QueueFree));
+    }
+
+    private static readonly SphereMesh SparkMesh = new() { Radius = 0.12f, Height = 0.24f, RadialSegments = 8, Rings = 4 };
 
     public static void Flash(Node3D parent, Vector3 at, Color color, float seconds)
     {

@@ -126,10 +126,11 @@ public partial class DuelHud : Control
 
     public void DamageFlash()
     {
+        // Subtle and short: under sustained fire (minigun) a strong flash would paint the whole screen red.
         _flashTween?.Kill();
-        _damageFlash.Color = new Color(0.8f, 0f, 0f, 0.35f);
+        _damageFlash.Color = new Color(0.8f, 0f, 0f, 0.14f);
         _flashTween = CreateTween();
-        _flashTween.TweenProperty(_damageFlash, "color:a", 0f, 0.4f);
+        _flashTween.TweenProperty(_damageFlash, "color:a", 0f, 0.2f);
     }
 
     private sealed partial class Bar : Control

@@ -8,7 +8,7 @@ public partial class PieceActor : AnimatableBody3D
 {
     public const uint PhysicsLayer = BoardGeometry.PieceLayer;
 
-    private Node3D _model = null!;
+    private MeshInstance3D _model = null!;
     private float _hoverOffset;
 
     public Piece Piece { get; private set; }
@@ -42,6 +42,10 @@ public partial class PieceActor : AnimatableBody3D
     }
 
     public float Height => PieceModels.Height(Piece.Type);
+
+    /// <summary>Dims the piece while a duel it is not part of is running.</summary>
+    public void SetDimmed(bool dimmed) =>
+        _model.MaterialOverride = dimmed ? PieceModels.DimmedMaterial(Piece.Color) : PieceModels.Material(Piece.Color);
 
     /// <summary>World position of the piece's "head", where shots start and land.</summary>
     public Vector3 Head => GlobalPosition + new Vector3(0, Height * 0.75f, 0);
