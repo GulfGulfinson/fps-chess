@@ -1,4 +1,5 @@
 using Chess.Core;
+using FpsChess.App;
 using Godot;
 
 namespace FpsChess.Arena;
@@ -129,7 +130,7 @@ public sealed class ArenaBuilder
             AmbientLightColor = _theme.Ambient,
             AmbientLightEnergy = 0.8f,
             TonemapMode = Godot.Environment.ToneMapper.Aces,
-            GlowEnabled = true,
+            GlowEnabled = GraphicsQuality.Glow,
             GlowIntensity = 0.5f,
             // No SSAO: it costs a large share of the frame on integrated GPUs for little visible gain here.
             FogEnabled = true,
@@ -142,8 +143,8 @@ public sealed class ArenaBuilder
             RotationDegrees = new Vector3(-55, -30, 0),
             LightColor = _theme.KeyLight,
             LightEnergy = _theme.KeyEnergy,
-            ShadowEnabled = true,
-            DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel2Splits,
+            ShadowEnabled = GraphicsQuality.Shadows,
+            DirectionalShadowMode = GraphicsQuality.ShadowSplits,
             DirectionalShadowMaxDistance = 90f,
         });
 

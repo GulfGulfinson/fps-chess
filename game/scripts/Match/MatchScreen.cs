@@ -121,9 +121,14 @@ public partial class MatchScreen : Node3D, IMatchClient
 
         BuildUi();
         _hud.SetStatus("Verbinde ...");
+        GraphicsQuality.ApplyTo(GetViewport());
     }
 
-    public override void _ExitTree() => Input.MouseMode = Input.MouseModeEnum.Visible;
+    public override void _ExitTree()
+    {
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+        GraphicsQuality.ResetViewport(GetViewport());
+    }
 
     private MatchChannel Channel => _client.Channel!;
 

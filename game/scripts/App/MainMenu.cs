@@ -25,6 +25,7 @@ public partial class MainMenu : Control
     private OptionButton _aiLevel = null!;
     private CheckButton _timed = null!;
     private OptionButton _timePreset = null!;
+    private OptionButton _graphics = null!;
     private Label _message = null!;
     private Control _setupPanel = null!;
     private Control _loadPanel = null!;
@@ -112,6 +113,11 @@ public partial class MainMenu : Control
         AddRow(grid, "Computer-Stärke", _aiLevel);
         AddRow(grid, "Zeitmodus", _timed);
         AddRow(grid, "Bedenkzeit", _timePreset);
+
+        _graphics = Options(Enum.GetValues<GraphicsLevel>().Select(GraphicsQuality.Label).ToArray());
+        _graphics.Selected = (int)UserPrefs.Graphics;
+        _graphics.ItemSelected += index => UserPrefs.Graphics = (GraphicsLevel)(int)index;
+        AddRow(grid, "Grafik (FPS Chess)", _graphics);
 
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
         buttons.AddThemeConstantOverride("separation", 12);

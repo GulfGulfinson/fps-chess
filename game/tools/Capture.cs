@@ -40,6 +40,7 @@ public partial class Capture : Node
             foreach (var shot in args.GetValueOrDefault("shots", "90").Split(',')) _shots.Add(int.Parse(shot));
         }
         _submit = args.GetValueOrDefault("submit");
+        if (args.TryGetValue("graphics", out var graphics)) UserPrefs.Graphics = Enum.Parse<GraphicsLevel>(graphics, ignoreCase: true);
         if (args.TryGetValue("fire", out var fire)) _fireFrame = int.Parse(fire);
 
         _main = GD.Load<PackedScene>("res://scenes/Main.tscn").Instantiate<Main>();

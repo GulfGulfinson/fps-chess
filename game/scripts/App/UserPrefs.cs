@@ -21,6 +21,12 @@ public static class UserPrefs
         set => Write("server", value);
     }
 
+    public static GraphicsLevel Graphics
+    {
+        get => Enum.TryParse<GraphicsLevel>(Read("graphics", nameof(GraphicsLevel.Medium)), out var level) ? level : GraphicsLevel.Medium;
+        set => Write("graphics", value.ToString());
+    }
+
     private static string Read(string key, string fallback)
     {
         var config = new ConfigFile();

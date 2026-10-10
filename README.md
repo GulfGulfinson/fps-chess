@@ -73,6 +73,12 @@ Alle Werte stehen in `src/Chess.Core/Duels/FighterClass.cs`.
 | Duell | G | Granate (Dame) |
 | beide | Esc | Menü (Speichern gegen den Computer, Aufgeben, Hauptmenü) |
 
+### Grafik
+
+Im Hauptmenü unter "Grafik (FPS Chess)": **Niedrig** rendert die 3D-Szene mit 60 % der Auflösung (hochskaliert mit
+FSR) und ohne Schatten und Leuchten, **Mittel** mit 80 % und einfachen Schatten, **Hoch** in voller Auflösung. Auf
+Laptops mit integrierter Grafik ist Mittel oder Niedrig die richtige Wahl.
+
 ### Online spielen
 
 Im Hauptmenü "Online spielen": Namen eingeben und mit dem öffentlichen Server `wss://chess.gulfgulfinson.de`
