@@ -8,6 +8,18 @@ Schach in C# mit zwei Modi, die dieselbe Spiellogik (`Chess.Core`) nutzen:
   Deckung, auf dem Tisch stehen Hindernisse. Verliert die angreifende Figur, stirbt sie, und die verteidigende
   bleibt stehen. Gespielt wird gegen den Computer oder online gegen andere.
 
+## Spielen ohne Installation
+
+Fertige Versionen für Windows und Linux gibt es unter
+[Releases](https://github.com/GulfGulfinson/fps-chess/releases): Zip herunterladen, entpacken, starten. .NET und
+Godot sind eingebaut. Online spielt man über "Online spielen" im Hauptmenü, der Server ist voreingestellt.
+
+- **Windows:** `FPSChess.exe` starten. Die Datei ist nicht signiert, deshalb warnt Windows SmartScreen beim ersten
+  Start: "Weitere Informationen", dann "Trotzdem ausführen".
+- **Linux:** `FPSChess.x86_64` starten (falls nötig vorher `chmod +x FPSChess.x86_64`).
+
+Neue Versionen baut `deploy/build-client-release.sh <version>` (braucht die Godot-4.7.2-.NET-Exportvorlagen).
+
 ## Anforderungen
 
 | # | Anforderung | Umsetzung |
