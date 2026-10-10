@@ -14,6 +14,10 @@ public static class UserPrefs
     private const string Section = "settings";
 
     private static ConfigFile? _config;
+    private static bool _persist = true;
+
+    /// <summary>For development tools: keep changes in memory so test runs do not touch the player's settings or stats.</summary>
+    public static void DisablePersistence() => _persist = false;
 
     private static ConfigFile Config
     {
@@ -72,6 +76,20 @@ public static class UserPrefs
         set => Write("muted", value ? "true" : "false");
     }
 
+    /// <summary>The player's long-term FPS Chess record.</summary>
+    public static Chess.Core.Stats.CareerStats Career
+    {
+        get => Chess.Core.Stats.CareerStats.FromJson(Read("career", ""));
+        set => Write("career", value.ToJson());
+    }
+
+    public static void UpdateCareer(Action<Chess.Core.Stats.CareerStats> change)
+    {
+        var stats = Career;
+        change(stats);
+        Career = stats;
+    }
+
     /// <summary>Applies the volume settings to the master bus.</summary>
     public static void ApplyAudio()
     {
@@ -94,6 +112,7 @@ public static class UserPrefs
     private static void Write(string key, string value)
     {
         Config.SetValue(Section, key, value);
+        if (!_persist) return;
         var error = Config.Save(Path);
         if (error != Error.Ok) GD.PushWarning($"Could not save settings: {error}");
     }

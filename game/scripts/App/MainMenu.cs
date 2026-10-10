@@ -27,6 +27,7 @@ public partial class MainMenu : Control
     private OptionButton _timePreset = null!;
     private SettingsPanel _settings = null!;
     private GuidePanel _guide = null!;
+    private StatsPanel _stats = null!;
     private Label _message = null!;
     private Control _setupPanel = null!;
     private Control _loadPanel = null!;
@@ -93,6 +94,8 @@ public partial class MainMenu : Control
         AddChild(_settings);
         _guide = new GuidePanel();
         AddChild(_guide);
+        _stats = new StatsPanel();
+        AddChild(_stats);
     }
 
     public override void _Draw()
@@ -144,6 +147,7 @@ public partial class MainMenu : Control
         extras.AddThemeConstantOverride("separation", 12);
         extras.AddChild(UiTheme.Button("Duell-Training", ShowTrainingPanel, 180));
         extras.AddChild(UiTheme.Button("Anleitung", () => _guide.Open(), 180));
+        extras.AddChild(UiTheme.Button("Statistik", () => _stats.Open(), 160));
         extras.AddChild(UiTheme.Button("Einstellungen", () => _settings.Open(), 180));
 
         var column = new VBoxContainer();

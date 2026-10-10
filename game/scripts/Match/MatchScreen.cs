@@ -111,6 +111,9 @@ public partial class MatchScreen : Node3D, IMatchClient
     private float _damageTaken;
     private int _headshots;
     private List<Piece> _startPieces = [];
+    private int _duelHeadshotsNow;
+    private float _duelDamageNow;
+    private bool _gameRecorded;
 
     /// <param name="lanHint">Shown while waiting for an opponent when this player hosts a LAN game.</param>
     /// <param name="trainingCapture">In a training duel: the capture to play at once; the game ends with the duel.</param>
@@ -402,7 +405,12 @@ public partial class MatchScreen : Node3D, IMatchClient
         if ((DuelRole)role != _myRole)
         {
             _damageDealt += amount;
-            if (headshot) _headshots++;
+            _duelDamageNow += amount;
+            if (headshot)
+            {
+                _headshots++;
+                _duelHeadshotsNow++;
+            }
             return;
         }
         _damageTaken += amount;
@@ -457,6 +465,10 @@ public partial class MatchScreen : Node3D, IMatchClient
         var won = (DuelOutcome)outcome == DuelOutcome.AttackerWon == (_myRole == DuelRole.Attacker);
         if (won) _duelsWon++;
         else _duelsLost++;
+        var piece = _localDuel![_myRole].Class.Piece;
+        var headshots = _duelHeadshotsNow;
+        var damage = _duelDamageNow;
+        UserPrefs.UpdateCareer(stats => stats.RecordDuel(piece, won, headshots, damage));
         _duelHud.ShowResult(won);
         Sfx.Play(this, won ? Sound.Win : Sound.Lose, pitchJitter: 0f);
         if (won && _opponent is not null)
@@ -825,6 +837,13 @@ public partial class MatchScreen : Node3D, IMatchClient
     private void ShowGameOver()
     {
         Deselect();
+        if (!_gameRecorded && !Training && _game is { IsOver: true } game)
+        {
+            _gameRecorded = true;
+            var result = game.Winner is not { } winner ? Chess.Core.Stats.GameResultKind.Draw
+                : winner == _myColor ? Chess.Core.Stats.GameResultKind.Won : Chess.Core.Stats.GameResultKind.Lost;
+            UserPrefs.UpdateCareer(stats => stats.RecordGame(result));
+        }
         After(1.2, () =>
         {
             if (_game is not { IsOver: true } || _phase != Phase.Board) return;
@@ -950,6 +969,8 @@ public partial class MatchScreen : Node3D, IMatchClient
         if (_actors.TryGetValue(attackerSquare, out var lunging)) Lunge(lunging, defenderAt);
         _hud.ShowBanner(Texts.AttackAnnouncement(attacker, defender, defenderSquare, _myColor), new Color("ff6a4f"));
         Sfx.Play(this, Sound.Capture, pitchJitter: 0f);
+        _duelHeadshotsNow = 0;
+        _duelDamageNow = 0f;
         _wasReloading = false;
         _lastCountdownSecond = 0;
         _announcedFight = false;

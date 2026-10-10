@@ -31,6 +31,7 @@ public partial class Capture : Node
 
     public override void _Ready()
     {
+        UserPrefs.DisablePersistence();
         var args = ParseArgs(OS.GetCmdlineUserArgs());
         _out = args.GetValueOrDefault("out", _out);
         if (args.TryGetValue("times", out var times))
@@ -151,7 +152,11 @@ public partial class Capture : Node
                      $"window {DisplayServer.WindowGetSize()}");
         }
 
-        if (_frame == 20 && _open is not null && _main.FindChild(_open, true, false) is Control panel) panel.Visible = true;
+        if (_frame == 20 && _open is not null && _main.FindChild(_open, true, false) is Control panel)
+        {
+            if (panel.HasMethod("Open")) panel.Call("Open");
+            else panel.Visible = true;
+        }
 
         // Time-based screenshots (seconds since start) for sequences, independent of the frame rate.
         _elapsed += delta;
