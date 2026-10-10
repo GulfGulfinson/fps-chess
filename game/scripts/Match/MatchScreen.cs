@@ -626,6 +626,38 @@ public partial class MatchScreen : Node3D, IMatchClient
             RefreshHighlights();
             Input.SetDefaultCursorShape(square is { } s && IsClickable(s) ? Input.CursorShape.PointingHand : Input.CursorShape.Arrow);
         }
+        // Every frame: selecting a piece changes the text without the mouse moving.
+        var (text, color) = DescribeBoardAim(square);
+        _hud.SetAimInfo(text, color);
+    }
+
+    /// <summary>
+    /// Hover help on the board. For a capture it shows the chance of winning the duel (the same estimate
+    /// the computer plays with) and what a lost duel costs.
+    /// </summary>
+    private (string Text, Color Color) DescribeBoardAim(Square? square)
+    {
+        if (_game is null || square is not { } target) return ("", UiTheme.Text);
+        var position = _game.Position;
+
+        var capture = _targets.FirstOrDefault(m => m.To == target);
+        if (_selected is { } from && _targets.Any(m => m.To == target) && position.IsCapture(capture))
+        {
+            var duel = PendingDuel.Describe(position, capture);
+            var chance = DuelOdds.AttackerWinProbability(duel.Attacker.Type, duel.Defender.Type);
+            var color = chance >= 0.55f ? new Color("7dff9b") : chance >= 0.4f ? new Color("ffd36b") : new Color("ff6a5f");
+            return ($"Siegchance etwa {chance:P0}: {Texts.Piece(duel.Attacker.Type)} gegen {Texts.Piece(duel.Defender.Type)}. " +
+                    $"Verlierst du, ist {Texts.Your(duel.Attacker.Type)} weg.", color);
+        }
+
+        if (position.PieceAt(target) is { } piece)
+        {
+            var fighter = FighterClasses.For(piece.Type);
+            var owner = piece.Color == _myColor ? "Deine Figur" : "Gegner";
+            return ($"{owner}: {Texts.Piece(piece.Type)} ({fighter.Name}), {fighter.MaxHealth:0} Leben, {fighter.Weapon.Name}",
+                piece.Color == _myColor ? new Color("6bd1ff") : new Color("ff8a6b"));
+        }
+        return ("", UiTheme.Text);
     }
 
     private bool IsClickable(Square square) =>

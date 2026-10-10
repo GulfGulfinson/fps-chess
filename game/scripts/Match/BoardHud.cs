@@ -12,6 +12,7 @@ public partial class BoardHud : Control
     private Label _hint = null!;
     private Label _banner = null!;
     private Label _toast = null!;
+    private Label _aim = null!;
     private Tween? _bannerTween;
     private Tween? _toastTween;
 
@@ -49,6 +50,13 @@ public partial class BoardHud : Control
         _hint.GrowVertical = GrowDirection.Begin;
         _hint.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterBottom, LayoutPresetMode.KeepSize, 20);
 
+        _aim = Outlined(UiTheme.Label("", 20, bold: true));
+        _aim.HorizontalAlignment = HorizontalAlignment.Center;
+        AddChild(_aim);
+        _aim.GrowHorizontal = GrowDirection.Both;
+        _aim.GrowVertical = GrowDirection.Begin;
+        _aim.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterBottom, LayoutPresetMode.KeepSize, 92);
+
         _toast = Outlined(UiTheme.Label("", 18, UiTheme.Accent));
         _toast.HorizontalAlignment = HorizontalAlignment.Center;
         AddChild(_toast);
@@ -80,6 +88,13 @@ public partial class BoardHud : Control
     }
 
     public void SetStatus(string text) => _status.Text = text;
+
+    /// <summary>What the mouse points at on the board: a piece's class or a capture's duel odds.</summary>
+    public void SetAimInfo(string text, Color color)
+    {
+        _aim.Text = text;
+        _aim.AddThemeColorOverride("font_color", color);
+    }
     public void SetPlayers(string text) => _players.Text = text;
     public void SetMoves(string text) => _moves.Text = text;
 

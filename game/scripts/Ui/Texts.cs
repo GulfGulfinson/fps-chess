@@ -46,6 +46,9 @@ public static class Texts
         return $"{subject} greift {target} auf {at} an!";
     }
 
+    /// <summary>"deine Dame", "dein Turm".</summary>
+    public static string Your(PieceType type) => (Feminine(type) ? "deine " : "dein ") + Piece(type);
+
     public static string Perk(Chess.Core.Duels.FighterClass fighter)
     {
         var perks = new List<string>();
