@@ -4,6 +4,7 @@ using Chess.Core.Persistence;
 using Chess.Core.Session;
 using FpsChess.App;
 using FpsChess.Arena;
+using FpsChess.Audio;
 using FpsChess.Duel;
 using FpsChess.Net;
 using FpsChess.Net.Client;
@@ -96,6 +97,9 @@ public partial class MatchScreen : Node3D, IMatchClient
     private float _sinceInput;
     private bool _triggerHeld;
     private bool _zoomed;
+    private bool _wasReloading;
+    private int _lastCountdownSecond;
+    private bool _announcedFight;
 
     /// <param name="lanHint">Shown while waiting for an opponent when this player hosts a LAN game.</param>
     public void Init(Main main, NetClient client, PieceColor myColor, string? lanHint)
@@ -330,13 +334,24 @@ public partial class MatchScreen : Node3D, IMatchClient
         var shooterColor = (DuelRole)role == DuelRole.Attacker ? attackerColor : attackerColor.Opponent();
         var color = shooterColor == PieceColor.White ? WhiteShot : BlackShot;
         for (var i = 0; i < ends.Length; i++) Effects.Tracer(_effects, _opponent.Head, ends[i], color, flash: i == 0);
+        Sfx.PlayAt(_effects, SoundBank.ShotFor(_opponent.Piece.Type), _opponent.Head, -3f);
     }
 
     public void OnDamaged(int role, float amount, bool headshot)
     {
         if (_phase is not (Phase.Duel or Phase.DuelIntro)) return;
         // Our own hits already showed a marker the moment we fired.
-        if ((DuelRole)role == _myRole) _duelHud.DamageFlash();
+        if ((DuelRole)role != _myRole) return;
+        _duelHud.DamageFlash();
+        Sfx.Play(this, Sound.Hurt, headshot ? 0f : -4f);
+        if (_fighter is not null && _opponent is not null)
+        {
+            var toEnemy = _opponent.GlobalPosition - _fighter.GlobalPosition;
+            var forward = -_fighter.GlobalBasis.Z;
+            var angle = Mathf.Atan2(forward.Cross(toEnemy).Y, forward.Dot(toEnemy));
+            // Atan2 of the cross product's Y is positive to the left; the HUD expects positive to the right.
+            _duelHud.ShowDamageFrom(-angle);
+        }
     }
 
     public void OnGrenadeThrown(int role, Vector3 origin, Vector3 velocity)
@@ -369,6 +384,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         }
         Effects.Burst(_effects, position, new Color("ff8a3d"));
         Effects.Flash(_effects, position, new Color("ffb347"), 0.5f);
+        Sfx.PlayAt(_effects, Sound.Explosion, position);
     }
 
     public void OnDuelEnded(int outcome)
@@ -376,6 +392,12 @@ public partial class MatchScreen : Node3D, IMatchClient
         if (_phase is not (Phase.Duel or Phase.DuelIntro)) return;
         var won = (DuelOutcome)outcome == DuelOutcome.AttackerWon == (_myRole == DuelRole.Attacker);
         _duelHud.ShowResult(won);
+        Sfx.Play(this, won ? Sound.Win : Sound.Lose, pitchJitter: 0f);
+        if (won && _opponent is not null)
+        {
+            Effects.Burst(_effects, _opponent.Head, PieceModels.Material(_opponent.Piece.Color).AlbedoColor);
+            _opponent.Visible = false;
+        }
         SetTrigger(false);
         _phase = Phase.DuelOutro;
         if (_fighter is not null) _fighter.CanMove = false;
@@ -585,6 +607,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         {
             // The attacker lost its duel and disappears; the defender stays where it is.
             mover.Die();
+            Sfx.Play(this, Sound.Capture);
             return;
         }
 
@@ -592,7 +615,12 @@ public partial class MatchScreen : Node3D, IMatchClient
         if (played.CapturedOn is { } capturedOn && _actors.Remove(capturedOn, out var victim))
         {
             victim.Die();
+            Sfx.Play(this, Sound.Capture);
             delay = 0.3f;
+        }
+        else
+        {
+            Sfx.Play(this, Sound.PieceMove);
         }
 
         _actors[played.Move.To] = mover;
@@ -768,6 +796,10 @@ public partial class MatchScreen : Node3D, IMatchClient
         _world.AddChild(_attackArrow);
         if (_actors.TryGetValue(attackerSquare, out var lunging)) Lunge(lunging, defenderAt);
         _hud.ShowBanner(Texts.AttackAnnouncement(attacker, defender, defenderSquare, _myColor), new Color("ff6a4f"));
+        Sfx.Play(this, Sound.Capture, pitchJitter: 0f);
+        _wasReloading = false;
+        _lastCountdownSecond = 0;
+        _announcedFight = false;
 
         // Stage 2: introduce both fighters.
         After(VersusCardAt, () =>
@@ -821,14 +853,15 @@ public partial class MatchScreen : Node3D, IMatchClient
 
         var myAt = BoardGeometry.Center(mine);
         var theirAt = BoardGeometry.Center(theirs);
-        _opponent = new RemoteFighter();
+        _opponent = new RemoteFighter { Name = "Opponent" };
         _opponent.Init(theirPiece, theirAt, BoardGeometry.YawTowards(theirAt, myAt), opponentOwner);
         _world.AddChild(_opponent);
         var theirHealth = _myRole == DuelRole.Attacker ? _serverDefenderHealth : _serverAttackerHealth;
         _opponent.SetHealth(theirHealth, FighterClasses.For(theirPiece.Type).MaxHealth);
 
-        _fighter = new LocalFighter { Position = myAt, Rotation = new Vector3(0, BoardGeometry.YawTowards(myAt, theirAt), 0) };
+        _fighter = new LocalFighter { Name = "Fighter", Position = myAt, Rotation = new Vector3(0, BoardGeometry.YawTowards(myAt, theirAt), 0) };
         _fighter.Init(myPiece.Type, _myColor);
+        _fighter.Stepped += () => Sfx.Play(this, Sound.Step, -10f, pitchJitter: 0.15f);
         _world.AddChild(_fighter);
 
         _duelHud.Setup(FighterClasses.For(myPiece.Type), FighterClasses.For(theirPiece.Type), opponentOwner);
@@ -917,6 +950,7 @@ public partial class MatchScreen : Node3D, IMatchClient
                 if (_localDuel.TryDash(_myRole))
                 {
                     _fighter.Dash(dash.Distance);
+                    Sfx.Play(this, Sound.Dash);
                     Channel.RpcId(1, MatchChannel.MethodName.Dash);
                 }
                 break;
@@ -945,6 +979,29 @@ public partial class MatchScreen : Node3D, IMatchClient
         var enemyHealth = _myRole == DuelRole.Attacker ? _serverDefenderHealth : _serverAttackerHealth;
         _duelHud.Refresh(me, ownHealth, enemyHealth, _serverTimeLeft, _serverCountdown, _serverIntro, _localDuel.Phase == DuelPhase.Fighting);
         if (me.Class.Weapon.SpinUpSeconds > 0) _fighter.Weapon.SetSpin(me.SpinUp / me.Class.Weapon.SpinUpSeconds);
+
+        // Reload sound and animation start with the reload itself (manual or after an empty magazine).
+        if (me.IsReloading && !_wasReloading)
+        {
+            Sfx.Play(this, Sound.Reload);
+            _fighter.Weapon.PlayReload(me.Class.Weapon.ReloadSeconds);
+        }
+        _wasReloading = me.IsReloading;
+
+        if (_serverIntro <= 0f && _serverCountdown > 0f)
+        {
+            var second = Mathf.CeilToInt(_serverCountdown);
+            if (second != _lastCountdownSecond)
+            {
+                _lastCountdownSecond = second;
+                Sfx.Play(this, Sound.Beep, pitchJitter: 0f);
+            }
+        }
+        if (!_announcedFight && _localDuel.Phase == DuelPhase.Fighting)
+        {
+            _announcedFight = true;
+            Sfx.Play(this, Sound.Go, pitchJitter: 0f);
+        }
 
         if (_phase == Phase.Duel && _triggerHeld && _fighter.ControlsEnabled && !OverlayOpen) TryShoot();
 
@@ -976,8 +1033,33 @@ public partial class MatchScreen : Node3D, IMatchClient
             if (hit.Count > 0 && hit["collider"].AsGodotObject() == _opponent) hitMask |= 1 << i;
             Effects.Tracer(_effects, _fighter.Weapon.MuzzlePosition, ends[i], color, flash: i == 0);
         }
-        if (hitMask != 0) _duelHud.HitMarker();
+        if (hitMask != 0 && _opponent is not null)
+        {
+            // Predicted feedback; the server's verdict follows a moment later.
+            var hits = 0;
+            var headshot = false;
+            var firstHit = Vector3.Zero;
+            for (var i = 0; i < ends.Length; i++)
+            {
+                if ((hitMask & (1 << i)) == 0) continue;
+                if (hits++ == 0) firstHit = ends[i];
+                headshot |= FighterClasses.IsHeadshot((ends[i].Y - _opponent.GlobalPosition.Y) / _opponent.PieceHeight);
+            }
+            var damage = weapon.Damage * hits * (headshot ? FighterClasses.HeadshotMultiplier : 1f);
+            _duelHud.HitMarker(headshot);
+            Sfx.Play(this, headshot ? Sound.Headshot : Sound.Hit, pitchJitter: 0f);
+            Effects.DamageNumber(_effects, firstHit, $"{damage:0}", headshot ? new Color("ffd23f") : Colors.White);
+        }
+        Sfx.Play(this, SoundBank.ShotFor(_fighter.Class.Piece), -6f);
         _fighter.Weapon.Recoil();
+        _fighter.Kick(_fighter.Class.Piece switch
+        {
+            PieceType.Bishop => 3.5f,
+            PieceType.Knight => 3f,
+            PieceType.King => 2.5f,
+            PieceType.Rook => 0.25f,
+            _ => 0.7f,
+        } * (_zoomed ? 0.6f : 1f));
         Channel.RpcId(1, MatchChannel.MethodName.Fire, origin, ends, hitMask);
     }
 

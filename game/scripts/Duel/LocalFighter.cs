@@ -21,6 +21,11 @@ public partial class LocalFighter : CharacterBody3D
     private Node3D _head = null!;
     private bool _usedDoubleJump;
     private Vector3 _dashVelocity;
+    private float _recoil;
+    private float _stepDistance;
+
+    /// <summary>Raised every couple of metres walked on the ground.</summary>
+    public event Action? Stepped;
 
     public FighterClass Class { get; private set; } = null!;
     public float PieceHeight { get; private set; }
@@ -99,6 +104,34 @@ public partial class LocalFighter : CharacterBody3D
         MoveAndSlide();
         Velocity -= _dashVelocity;
         _dashVelocity = _dashVelocity.MoveToward(Vector3.Zero, 120f * dt);
+
+        var horizontal = new Vector2(Velocity.X, Velocity.Z).Length();
+        Weapon.SetMovement(IsOnFloor() ? horizontal : 0f);
+        if (IsOnFloor() && horizontal > 1f)
+        {
+            _stepDistance += horizontal * dt;
+            if (_stepDistance > 2.2f)
+            {
+                _stepDistance = 0f;
+                Stepped?.Invoke();
+            }
+        }
+
+        // Camera recoil climbs with each shot and settles back on its own.
+        if (_recoil > 0f)
+        {
+            var settle = Mathf.Min(_recoil, dt * 6f * Mathf.Max(0.02f, _recoil));
+            _recoil -= settle;
+            _head.Rotation = _head.Rotation with { X = Mathf.Clamp(_head.Rotation.X - settle, -1.45f, 1.45f) };
+        }
+    }
+
+    /// <summary>Kicks the view up by <paramref name="degrees"/>; it recovers over the next moments.</summary>
+    public void Kick(float degrees)
+    {
+        var radians = Mathf.DegToRad(degrees);
+        _recoil += radians;
+        _head.Rotation = _head.Rotation with { X = Mathf.Clamp(_head.Rotation.X + radians, -1.45f, 1.45f) };
     }
 
     /// <summary>Queen perk: a quick burst in the movement direction (or forward when standing still).</summary>
@@ -110,8 +143,11 @@ public partial class LocalFighter : CharacterBody3D
         _dashVelocity = (Transform.Basis * local).Normalized() * Mathf.Sqrt(distance * 240f);
     }
 
-    public void SetZoom(bool zoomed) =>
+    public void SetZoom(bool zoomed)
+    {
         Camera.Fov = zoomed ? Class.ZoomFov ?? 65f : 80f;
+        Weapon.SetAiming(zoomed);
+    }
 
     public Vector3 AimDirection => -Camera.GlobalBasis.Z;
 }

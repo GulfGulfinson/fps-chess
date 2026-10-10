@@ -8,7 +8,18 @@ public partial class WeaponView : Node3D
 {
     private static readonly Vector3 RestPosition = new(0.22f, -0.22f, -0.5f);
 
+    // Aiming down the sights pulls the weapon to the centre, just below the crosshair.
+    private static readonly Vector3 AimPosition = new(0f, -0.13f, -0.42f);
+
     private Node3D _muzzle = null!;
+    private MeshInstance3D _flash = null!;
+    private float _kick;
+    private float _reloadLeft;
+    private float _reloadDuration = 1f;
+    private bool _aiming;
+    private float _moveSpeed;
+    private float _bobPhase;
+    private float _flashLeft;
     private Node3D? _barrels;
     private PieceType _type;
     private Color _glow;
@@ -97,6 +108,51 @@ public partial class WeaponView : Node3D
 
         _muzzle = new Node3D { Position = new Vector3(0, 0.02f, muzzleZ) };
         AddChild(_muzzle);
+        _flash = new MeshInstance3D
+        {
+            Mesh = new SphereMesh { Radius = 0.09f, Height = 0.18f, RadialSegments = 8, Rings = 4 },
+            MaterialOverride = new StandardMaterial3D
+            {
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                AlbedoColor = new Color(1f, 0.85f, 0.5f),
+            },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false,
+        };
+        _muzzle.AddChild(_flash);
+    }
+
+    public void SetAiming(bool aiming) => _aiming = aiming;
+
+    /// <summary>Horizontal speed of the fighter, for the walking bob.</summary>
+    public void SetMovement(float speed) => _moveSpeed = speed;
+
+    /// <summary>The weapon dips and tilts for the length of the reload.</summary>
+    public void PlayReload(float seconds)
+    {
+        _reloadDuration = Math.Max(0.1f, seconds);
+        _reloadLeft = _reloadDuration;
+    }
+
+    public override void _Process(double delta)
+    {
+        var dt = (float)delta;
+        _kick = Mathf.MoveToward(_kick, 0f, dt * 1.2f);
+        _reloadLeft = Mathf.Max(0f, _reloadLeft - dt);
+        _flashLeft -= dt;
+        _flash.Visible = _flashLeft > 0f;
+
+        var target = _aiming ? AimPosition : RestPosition;
+        if (_moveSpeed > 0.5f && !_aiming)
+        {
+            _bobPhase += dt * (6f + _moveSpeed * 0.6f);
+            target += new Vector3(Mathf.Cos(_bobPhase * 0.5f) * 0.012f, Mathf.Abs(Mathf.Sin(_bobPhase)) * 0.018f, 0);
+        }
+        var reload = _reloadLeft > 0f ? Mathf.Sin(Mathf.Pi * (1f - _reloadLeft / _reloadDuration)) : 0f;
+        target += new Vector3(0, -0.22f * reload + _kick * 0.3f, _kick);
+
+        Position = Position.Lerp(target, Mathf.Min(1f, dt * 18f));
+        Rotation = new Vector3(Mathf.DegToRad(_kick * 120f - reload * 35f), 0, Mathf.DegToRad(reload * 20f));
     }
 
     /// <summary>Spins the minigun barrels while it winds up.</summary>
@@ -107,15 +163,13 @@ public partial class WeaponView : Node3D
 
     public void Recoil()
     {
-        var kick = _type switch
+        _kick = Math.Min(0.12f, _kick + _type switch
         {
-            PieceType.Bishop or PieceType.Knight => 0.14f,
-            PieceType.King => 0.1f,
-            PieceType.Rook => 0.02f,
-            _ => 0.05f,
-        };
-        var tween = CreateTween();
-        tween.TweenProperty(this, "position", RestPosition + new Vector3(0, kick * 0.3f, kick), 0.04f);
-        tween.TweenProperty(this, "position", RestPosition, 0.18f).SetTrans(Tween.TransitionType.Sine);
+            PieceType.Bishop or PieceType.Knight => 0.09f,
+            PieceType.King => 0.07f,
+            PieceType.Rook => 0.01f,
+            _ => 0.035f,
+        });
+        _flashLeft = 0.05f;
     }
 }

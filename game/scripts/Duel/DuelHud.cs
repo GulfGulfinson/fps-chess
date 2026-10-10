@@ -17,6 +17,7 @@ public partial class DuelHud : Control
     private Label _timer = null!;
     private Label _center = null!;
     private ColorRect _damageFlash = null!;
+    private Indicators _indicators = null!;
     private Tween? _flashTween;
 
     public override void _Ready()
@@ -28,6 +29,9 @@ public partial class DuelHud : Control
         _damageFlash = new ColorRect { Color = new Color(0.8f, 0f, 0f, 0f), MouseFilter = MouseFilterEnum.Ignore };
         _damageFlash.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(_damageFlash);
+
+        _indicators = new Indicators();
+        AddChild(_indicators);
 
         _crosshair = new Crosshair();
         AddChild(_crosshair);
@@ -92,6 +96,7 @@ public partial class DuelHud : Control
     public void Refresh(Fighter own, float ownHealth, float enemyHealth, float timeLeft, float countdown, float intro, bool fighting)
     {
         _ownHealth.Value = ownHealth;
+        _indicators.HealthFraction = own.Class.MaxHealth > 0 ? ownHealth / own.Class.MaxHealth : 1f;
         _enemyHealth.Value = enemyHealth;
         _timer.Text = fighting ? $"{Mathf.CeilToInt(timeLeft)}" : "";
         _timer.AddThemeColorOverride("font_color", timeLeft < 10f ? UiTheme.Danger : UiTheme.Text);
@@ -122,7 +127,10 @@ public partial class DuelHud : Control
 
     public void SetZoomed(bool zoomed) => _crosshair.Zoomed = zoomed;
 
-    public void HitMarker() => _crosshair.Hit();
+    public void HitMarker(bool headshot = false) => _crosshair.Hit(headshot);
+
+    /// <summary>Points to where a hit came from; the angle is relative to the view (0 = straight ahead, positive = right).</summary>
+    public void ShowDamageFrom(float angle) => _indicators.AddHit(angle);
 
     public void DamageFlash()
     {
@@ -131,6 +139,58 @@ public partial class DuelHud : Control
         _damageFlash.Color = new Color(0.8f, 0f, 0f, 0.14f);
         _flashTween = CreateTween();
         _flashTween.TweenProperty(_damageFlash, "color:a", 0f, 0.2f);
+    }
+
+    /// <summary>Red arcs at the screen edge towards recent hits, and a red vignette when health runs low.</summary>
+    private sealed partial class Indicators : Control
+    {
+        private readonly List<(float Angle, float Life)> _hits = [];
+
+        public float HealthFraction { get; set; } = 1f;
+
+        public override void _Ready()
+        {
+            SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+            MouseFilter = MouseFilterEnum.Ignore;
+        }
+
+        public void AddHit(float angle) => _hits.Add((angle, 1f));
+
+        public override void _Process(double delta)
+        {
+            for (var i = _hits.Count - 1; i >= 0; i--)
+            {
+                var (angle, life) = _hits[i];
+                life -= (float)delta;
+                if (life <= 0f) _hits.RemoveAt(i);
+                else _hits[i] = (angle, life);
+            }
+            QueueRedraw();
+        }
+
+        public override void _Draw()
+        {
+            var center = Size / 2f;
+            var radius = Mathf.Min(Size.X, Size.Y) * 0.32f;
+            foreach (var (angle, life) in _hits)
+            {
+                // Screen angle: 0 points up, so subtract a quarter turn.
+                var screenAngle = angle - Mathf.Pi / 2f;
+                DrawArc(center, radius, screenAngle - 0.35f, screenAngle + 0.35f, 24, new Color(1f, 0.15f, 0.1f, 0.75f * life), 10f, true);
+            }
+
+            if (HealthFraction < 0.35f)
+            {
+                var strength = (0.35f - HealthFraction) / 0.35f;
+                var pulse = 0.75f + 0.25f * Mathf.Sin(Time.GetTicksMsec() / 180f);
+                var color = new Color(0.7f, 0f, 0f, 0.45f * strength * pulse);
+                var edge = Mathf.Min(Size.X, Size.Y) * 0.12f;
+                DrawRect(new Rect2(0, 0, Size.X, edge), color);
+                DrawRect(new Rect2(0, Size.Y - edge, Size.X, edge), color);
+                DrawRect(new Rect2(0, 0, edge, Size.Y), color);
+                DrawRect(new Rect2(Size.X - edge, 0, edge, Size.Y), color);
+            }
+        }
     }
 
     private sealed partial class Bar : Control
@@ -165,6 +225,7 @@ public partial class DuelHud : Control
     private sealed partial class Crosshair : Control
     {
         private float _hitFor;
+        private bool _headshot;
 
         public bool Zoomed { get; set; }
 
@@ -174,9 +235,10 @@ public partial class DuelHud : Control
             MouseFilter = MouseFilterEnum.Ignore;
         }
 
-        public void Hit()
+        public void Hit(bool headshot)
         {
-            _hitFor = 0.2f;
+            _hitFor = headshot ? 0.35f : 0.2f;
+            _headshot = headshot;
             QueueRedraw();
         }
 
@@ -210,9 +272,11 @@ public partial class DuelHud : Control
 
             if (_hitFor > 0f)
             {
+                var color = _headshot ? new Color("ffd23f") : new Color("ff4a3f");
+                var size = _headshot ? 22f : 16f;
                 foreach (var direction in new[] { new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) })
                 {
-                    DrawLine(center + direction * 8f, center + direction * 16f, new Color("ff4a3f"), 3f);
+                    DrawLine(center + direction * 8f, center + direction * size, color, _headshot ? 4f : 3f);
                 }
             }
         }

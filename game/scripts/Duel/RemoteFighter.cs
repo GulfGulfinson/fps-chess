@@ -26,6 +26,8 @@ public partial class RemoteFighter : AnimatableBody3D
 
     public float PieceHeight => PieceModels.Height(_piece.Type);
 
+    public Piece Piece => _piece;
+
     public override void _Ready()
     {
         SyncToPhysics = false;

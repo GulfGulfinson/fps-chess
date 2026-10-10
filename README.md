@@ -69,7 +69,13 @@ Spielstände liegen unter Linux in `~/.local/share/godot/app_userdata/FPS Chess/
 | Dame | 160 | Sturmgewehr | Dash (Shift), 2 Granaten (G) |
 | König | 140 | Revolver | regeneriert Leben, wenn er 3 Sekunden nicht getroffen wird |
 
-Alle Werte stehen in `src/Chess.Core/Duels/FighterClass.cs`.
+Treffer am Kopf (oberes Fünftel der Figur) zählen als Kopftreffer und machen 1,5-fachen Schaden. Alle Werte stehen in
+`src/Chess.Core/Duels/FighterClass.cs`.
+
+Ob ein Schuss trifft, entscheidet zuerst das Spiel des Schützen anhand dessen, was auf seinem Bildschirm zu sehen
+ist. Der Server prüft jeden gemeldeten Treffer gegen die Positionen des Gegners der letzten 0,6 Sekunden und gegen
+Hindernisse dazwischen. Alle Geräusche werden beim Start im Code erzeugt (`game/scripts/Audio/SoundBank.cs`), das
+Spiel braucht keine Audiodateien.
 
 ### Steuerung
 

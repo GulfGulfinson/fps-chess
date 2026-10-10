@@ -31,6 +31,9 @@ public partial class DuelBot : CharacterBody3D
     private float _strafeSign = 1f;
     private float _strafeSwitchIn = 1.5f;
     private float _lastHealth;
+    private Vector3? _cover;
+    private float _inCoverFor;
+    private float _coverCooldown;
 
     public void Init(ServerDuel duel, Fighter3D self, int aiLevel)
     {
@@ -67,9 +70,21 @@ public partial class DuelBot : CharacterBody3D
             _visibleFor = sees ? _visibleFor + dt : 0f;
             _hiddenFor = sees ? 0f : _hiddenFor + dt;
 
-            desired = sees ? Strafe(flat, dt) : FollowPath(target.Position, dt);
-            Shoot(sees, toTarget);
-            UsePerks(sees, target, flat, me);
+            UpdateCover(dt, me, target);
+            if (_cover is { } cover)
+            {
+                desired = FollowPath(cover, dt);
+                // Still shoot back if the opponent shows up while we retreat.
+                Shoot(sees && !me.IsReloading, toTarget);
+            }
+            else
+            {
+                desired = sees ? Strafe(flat, dt) : FollowPath(target.Position, dt);
+                Shoot(sees, toTarget);
+                UsePerks(sees, target, flat, me);
+                // An occasional hop while strafing makes the bot harder to hit.
+                if (sees && IsOnFloor() && GD.Randf() < 0.006f) velocity.Y = 5.5f;
+            }
         }
 
         var speed = BaseSpeed * _class.SpeedMultiplier;
@@ -78,6 +93,61 @@ public partial class DuelBot : CharacterBody3D
         Velocity = velocity;
         MoveAndSlide();
         _lastHealth = me.Health;
+    }
+
+    /// <summary>Retreat behind cover to reload or recover, then come back out.</summary>
+    private void UpdateCover(float dt, Chess.Core.Duels.Fighter me, Fighter3D target)
+    {
+        _coverCooldown = Mathf.Max(0f, _coverCooldown - dt);
+        var hurt = me.Health < me.Class.MaxHealth * 0.35f;
+        var wantsCover = me.IsReloading || (hurt && me.Class.Regeneration is not null);
+
+        if (_cover is null)
+        {
+            if ((wantsCover || hurt) && _coverCooldown <= 0f) _cover = FindCover(target);
+            _inCoverFor = 0f;
+            return;
+        }
+
+        if (GlobalPosition.DistanceTo(_cover.Value) < 1.2f) _inCoverFor += dt;
+        // Leave cover once the reason is gone, or after a while so the bot never just hides out the clock.
+        var regenerating = me.Class.Regeneration is not null && me.Health < me.Class.MaxHealth * 0.7f;
+        if ((!me.IsReloading && !regenerating && _inCoverFor > 0.8f) || _inCoverFor > 4f)
+        {
+            _cover = null;
+            _coverCooldown = 5f;
+        }
+    }
+
+    /// <summary>The nearest reachable spot within a few metres that the opponent cannot see.</summary>
+    private Vector3? FindCover(Fighter3D target)
+    {
+        var space = GetWorld3D().DirectSpaceState;
+        Vector3? best = null;
+        var bestDistance = float.MaxValue;
+        for (var ring = 3f; ring <= 9f; ring += 3f)
+        {
+            for (var i = 0; i < 16; i++)
+            {
+                var angle = Mathf.Tau / 16f * i;
+                var candidate = GlobalPosition + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * ring;
+                var onMesh = NavigationServer3D.MapGetClosestPoint(_duel.NavigationMap, candidate);
+                if (onMesh.DistanceTo(candidate) > 0.6f || Mathf.Abs(onMesh.Y - GlobalPosition.Y) > 0.5f) continue;
+
+                var chest = onMesh + Vector3.Up * Ballistics.ChestHeight(_self.Height);
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(target.Eye, chest,
+                    BoardGeometry.WorldLayer | BoardGeometry.PieceLayer));
+                if (hit.Count == 0) continue;
+                var distance = GlobalPosition.DistanceTo(onMesh);
+                if (distance < bestDistance)
+                {
+                    best = onMesh;
+                    bestDistance = distance;
+                }
+            }
+            if (best is not null) break;
+        }
+        return best;
     }
 
     private bool CanSee(Fighter3D target)

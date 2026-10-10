@@ -62,6 +62,30 @@ public static class Effects
         tween.TweenCallback(Callable.From(spark.QueueFree));
     }
 
+    /// <summary>A damage number rising from where a hit landed.</summary>
+    public static void DamageNumber(Node3D parent, Vector3 at, string text, Color color)
+    {
+        var label = new Label3D
+        {
+            Text = text,
+            FontSize = 64,
+            PixelSize = 0.0012f,
+            FixedSize = true,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+            NoDepthTest = true,
+            Modulate = color,
+            OutlineModulate = Colors.Black,
+            OutlineSize = 12,
+            Font = Ui.UiTheme.Bold,
+        };
+        parent.AddChild(label);
+        label.GlobalPosition = at + new Vector3((float)GD.RandRange(-0.2, 0.2), 0.3f, 0);
+        var tween = label.CreateTween().SetParallel();
+        tween.TweenProperty(label, "global_position", label.GlobalPosition + Vector3.Up * 1.2f, 0.7f).SetEase(Tween.EaseType.Out);
+        tween.TweenProperty(label, "modulate:a", 0f, 0.7f).SetDelay(0.25f);
+        tween.Chain().TweenCallback(Callable.From(label.QueueFree));
+    }
+
     private static readonly SphereMesh SparkMesh = new() { Radius = 0.12f, Height = 0.24f, RadialSegments = 8, Rings = 4 };
 
     public static void Flash(Node3D parent, Vector3 at, Color color, float seconds)

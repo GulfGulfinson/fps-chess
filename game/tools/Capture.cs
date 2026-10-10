@@ -20,7 +20,8 @@ public partial class Capture : Node
     private string _out = "capture.png";
     private readonly SortedSet<int> _shots = [];
     private string? _submit;
-    private int _fireFrame = -1;
+    private double _fireAt = -1;
+    private int _fireState;
     private int _frame;
     private ulong _benchStart;
     private readonly SortedSet<double> _times = [];
@@ -41,7 +42,7 @@ public partial class Capture : Node
         }
         _submit = args.GetValueOrDefault("submit");
         if (args.TryGetValue("graphics", out var graphics)) UserPrefs.Graphics = Enum.Parse<GraphicsLevel>(graphics, ignoreCase: true);
-        if (args.TryGetValue("fire", out var fire)) _fireFrame = int.Parse(fire);
+        if (args.TryGetValue("fire", out var fire)) _fireAt = double.Parse(fire, System.Globalization.CultureInfo.InvariantCulture);
 
         _main = GD.Load<PackedScene>("res://scenes/Main.tscn").Instantiate<Main>();
         AddChild(_main);
@@ -103,11 +104,17 @@ public partial class Capture : Node
             foreach (var uci in _submit.Split(',')) channel.RpcId(1, MatchChannel.MethodName.SubmitMove, uci);
         }
 
-        // Hold the fire button for a second, as a player would.
-        if (_frame == _fireFrame || _frame == _fireFrame + 60)
+        // From --fire seconds on: look at the opponent and hold the fire button for two seconds.
+        if (_fireState == 1 && _main.FindChild("Opponent", true, false) is Node3D enemy &&
+            _main.FindChild("Fighter", true, false) is FpsChess.Duel.LocalFighter me)
+        {
+            me.Camera.LookAt(enemy.GlobalPosition + Vector3.Up * 1f);
+        }
+        if (_fireAt >= 0 && _fireState < 2 && _elapsed >= _fireAt + _fireState * 2.0)
         {
             Input.MouseMode = Input.MouseModeEnum.Captured;
-            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = _frame == _fireFrame });
+            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = _fireState == 0 });
+            _fireState++;
         }
 
         // Benchmark: average frame rate over frames 120 to 420, measured in real time.

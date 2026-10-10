@@ -1,5 +1,6 @@
 using Chess.Core;
 using Chess.Core.Session;
+using FpsChess.Audio;
 using FpsChess.Ui;
 using Godot;
 
@@ -128,6 +129,7 @@ public partial class BoardView2D : Control
 
     private void OnMovePlayed(PlayedMove played)
     {
+        Sfx.Play(this, played.Captured is null ? Sound.PieceMove : Sound.Capture);
         _animating = played;
         _animationProgress = 0f;
         QueueRedraw();
