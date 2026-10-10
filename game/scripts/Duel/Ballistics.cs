@@ -10,6 +10,8 @@ public static class Ballistics
 
     public static float ChestHeight(float pieceHeight) => pieceHeight * 0.6f;
 
+    public static System.Numerics.Vector3 ToNumerics(this Vector3 v) => new(v.X, v.Y, v.Z);
+
     /// <summary>A random direction inside a cone of <paramref name="coneDegrees"/> around <paramref name="direction"/>.</summary>
     public static Vector3 Scatter(Vector3 direction, float coneDegrees)
     {
@@ -23,9 +25,9 @@ public static class Ballistics
         return (direction + side * Mathf.Cos(angle) * radius + up * Mathf.Sin(angle) * radius).Normalized();
     }
 
-    public static Vector3[] ShotDirections(Vector3 aim, WeaponStats weapon, bool zoomed, float extraErrorDegrees = 0f)
+    public static Vector3[] ShotDirections(Vector3 aim, WeaponStats weapon, bool aiming, float extraErrorDegrees = 0f)
     {
-        var spread = (zoomed && weapon.ZoomedSpreadDegrees is { } zoomedSpread ? zoomedSpread : weapon.SpreadDegrees) + extraErrorDegrees;
+        var spread = weapon.SpreadFor(aiming) + extraErrorDegrees;
         var directions = new Vector3[weapon.Pellets];
         for (var i = 0; i < directions.Length; i++) directions[i] = Scatter(aim, spread);
         return directions;

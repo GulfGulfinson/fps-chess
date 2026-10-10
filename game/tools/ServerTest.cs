@@ -36,6 +36,12 @@ public partial class ServerTest : Node
     private TestPlayer? _intruder;
     private string _roomCode = "";
     private double _sinceShot;
+    private bool _cheated;
+    private double _waited;
+    private double _moveTime;
+    private readonly List<(double Time, Vector3 Position)> _bTrail = [];
+
+    private static Vector3 EyeOf(Vector3 feet) => feet + Vector3.Up * Ballistics.EyeHeight(PieceModels.Height(PieceType.Pawn));
 
     public override void _Ready()
     {
@@ -141,20 +147,46 @@ public partial class ServerTest : Node
             if (!_a.Sent.Contains("e4d5")) _a.Submit("e4d5");
             return _a.Duel is not null && _b.Duel is not null;
         });
-        Then("the attacker shoots the defender and wins", delta =>
+        Then("the duel reaches the fighting phase", delta =>
+        {
+            _a.SendPose(BoardGeometry.Center(Square.Parse("e4")));
+            _b.SendPose(BoardGeometry.Center(Square.Parse("d5")));
+            return _a.Fighting && _b.Fighting;
+        });
+        Then("a claimed hit where the defender never stood does no damage", delta =>
         {
             var attackerAt = BoardGeometry.Center(Square.Parse("e4"));
             var defenderAt = BoardGeometry.Center(Square.Parse("d5"));
             _a.SendPose(attackerAt);
             _b.SendPose(defenderAt);
+            if (!_cheated)
+            {
+                _cheated = true;
+                _a.Fire(EyeOf(attackerAt), [defenderAt + new Vector3(4f, 1f, 0f)], hitMask: 1);
+            }
+            if ((_waited += delta) < 0.8) return false;
+            Check(_b.DamageTaken == 0, $"a fabricated hit did {_b.DamageTaken} damage");
+            return true;
+        });
+        Then("hits on a moving target count where the shooter saw it", delta =>
+        {
+            var attackerAt = BoardGeometry.Center(Square.Parse("e4"));
+            var defenderAt = BoardGeometry.Center(Square.Parse("d5"));
+            _moveTime += delta;
+            // B strafes sideways at up to about 6 m/s.
+            var position = defenderAt + new Vector3(Mathf.Sin((float)_moveTime * 3f) * 2f, 0, 0);
+            _bTrail.Add((_moveTime, position));
+            _a.SendPose(attackerAt);
+            _b.SendPose(position);
+
             _sinceShot += delta;
-            if (_sinceShot > 0.3)
+            if (_sinceShot > 0.3 && _moveTime > 0.5)
             {
                 _sinceShot = 0;
+                // Where A saw B: 0.15 s in the past, like a client behind the network and its smoothing.
+                var seen = _bTrail.Last(p => p.Time <= _moveTime - 0.15).Position;
                 var height = PieceModels.Height(PieceType.Pawn);
-                var origin = attackerAt + Vector3.Up * Ballistics.EyeHeight(height);
-                var target = defenderAt + Vector3.Up * Ballistics.ChestHeight(height);
-                _a.Fire(origin, [(target - origin).Normalized()]);
+                _a.Fire(EyeOf(attackerAt), [seen + Vector3.Up * Ballistics.ChestHeight(height)], hitMask: 1);
             }
             return _a.DuelEnded is not null && _b.DuelEnded is not null && _a.Moves.Count == 3 && _b.Moves.Count == 3;
         });
@@ -341,7 +373,7 @@ public partial class ServerTest : Node
             Channel.RpcId(1, MatchChannel.MethodName.DuelInput, position, 0f, 0f);
         }
 
-        public void Fire(Vector3 origin, Vector3[] directions) => Channel.RpcId(1, MatchChannel.MethodName.Fire, origin, directions);
+        public void Fire(Vector3 origin, Vector3[] ends, int hitMask) => Channel.RpcId(1, MatchChannel.MethodName.Fire, origin, ends, hitMask);
 
         public void OnState(string json)
         {
@@ -358,7 +390,10 @@ public partial class ServerTest : Node
             _role = Enum.Parse<PieceColor>(Duel.AttackerColor) == Color ? DuelRole.Attacker : DuelRole.Defender;
         }
 
-        public void OnDuelSnapshot(Vector3 attacker, float attackerYaw, float attackerPitch, Vector3 defender, float defenderYaw, float defenderPitch, float[] stats) { }
+        public bool Fighting;
+
+        public void OnDuelSnapshot(Vector3 attacker, float attackerYaw, float attackerPitch, Vector3 defender, float defenderYaw, float defenderPitch, float[] stats) =>
+            Fighting = stats[SnapshotField.IntroLeft] <= 0f && (int)stats[SnapshotField.Phase] == (int)DuelPhase.Fighting;
         public void OnShotFired(int role, Vector3 origin, Vector3[] ends) { }
 
         public void OnDamaged(int role, float amount)

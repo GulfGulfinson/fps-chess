@@ -10,7 +10,7 @@ public interface IMatchServer
     void OnPauseRequested(int peer, bool paused);
     void OnDuelInput(int peer, Vector3 position, float yaw, float pitch);
     void OnTrigger(int peer, bool held);
-    void OnFire(int peer, Vector3 origin, Vector3[] directions);
+    void OnFire(int peer, Vector3 origin, Vector3[] ends, int hitMask);
     void OnReload(int peer);
     void OnDash(int peer);
     void OnThrowGrenade(int peer, Vector3 origin, Vector3 velocity);
@@ -63,8 +63,12 @@ public partial class MatchChannel : Node
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
     public void Trigger(bool held) => Server?.OnTrigger(Sender, held);
 
+    /// <summary>
+    /// One shot as the shooter saw it: where each pellet ended and, as a bit mask, which pellets hit the
+    /// opponent on the shooter's screen. The server checks every claimed hit before applying damage.
+    /// </summary>
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
-    public void Fire(Vector3 origin, Vector3[] directions) => Server?.OnFire(Sender, origin, directions);
+    public void Fire(Vector3 origin, Vector3[] ends, int hitMask) => Server?.OnFire(Sender, origin, ends, hitMask);
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
     public void Reload() => Server?.OnReload(Sender);

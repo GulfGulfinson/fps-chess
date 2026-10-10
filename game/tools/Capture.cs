@@ -97,6 +97,17 @@ public partial class Capture : Node
             Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = _frame == _fireFrame });
         }
 
+        if (_frame % 30 == 0)
+        {
+            GD.Print($"[perf] frame {_frame}: {Engine.GetFramesPerSecond()} fps, " +
+                     $"{Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)} draw calls, " +
+                     $"{Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame)} objects, " +
+                     $"{Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame) / 1000:0}k primitives, " +
+                     $"process {Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:0.0} ms, " +
+                     $"physics {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:0.0} ms, " +
+                     $"window {DisplayServer.WindowGetSize()}");
+        }
+
         if (!_shots.Contains(_frame)) return;
         var path = _shots.Count > 1 || _shots.Min != 90 ? _out.Replace(".png", $"_{_frame}.png") : _out;
         GetViewport().GetTexture().GetImage().SavePng(path);

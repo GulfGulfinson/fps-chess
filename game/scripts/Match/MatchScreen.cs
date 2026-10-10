@@ -314,8 +314,8 @@ public partial class MatchScreen : Node3D, IMatchClient
     public void OnDamaged(int role, float amount)
     {
         if (_phase is not (Phase.Duel or Phase.DuelIntro)) return;
+        // Our own hits already showed a marker the moment we fired.
         if ((DuelRole)role == _myRole) _duelHud.DamageFlash();
-        else _duelHud.HitMarker();
     }
 
     public void OnGrenadeThrown(int role, Vector3 origin, Vector3 velocity)
@@ -841,15 +841,20 @@ public partial class MatchScreen : Node3D, IMatchClient
         var directions = Ballistics.ShotDirections(_fighter.AimDirection, weapon, _zoomed);
         var space = GetWorld3D().DirectSpaceState;
         var color = _myColor == PieceColor.White ? WhiteShot : BlackShot;
-        foreach (var direction in directions)
+        var ends = new Vector3[directions.Length];
+        var hitMask = 0;
+        for (var i = 0; i < directions.Length; i++)
         {
-            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(origin, origin + direction * weapon.MaxRange,
+            // Hits are judged against what this player sees; the server double-checks them.
+            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(origin, origin + directions[i] * weapon.MaxRange,
                 BoardGeometry.WorldLayer | BoardGeometry.PieceLayer, [_fighter.GetRid()]));
-            var end = hit.Count > 0 ? hit["position"].AsVector3() : origin + direction * weapon.MaxRange;
-            Effects.Tracer(_effects, _fighter.Weapon.MuzzlePosition, end, color);
+            ends[i] = hit.Count > 0 ? hit["position"].AsVector3() : origin + directions[i] * weapon.MaxRange;
+            if (hit.Count > 0 && hit["collider"].AsGodotObject() == _opponent) hitMask |= 1 << i;
+            Effects.Tracer(_effects, _fighter.Weapon.MuzzlePosition, ends[i], color);
         }
+        if (hitMask != 0) _duelHud.HitMarker();
         _fighter.Weapon.Recoil();
-        Channel.RpcId(1, MatchChannel.MethodName.Fire, origin, directions);
+        Channel.RpcId(1, MatchChannel.MethodName.Fire, origin, ends, hitMask);
     }
 
     private void ThrowGrenade()

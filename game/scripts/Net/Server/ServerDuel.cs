@@ -26,6 +26,7 @@ public partial class ServerDuel : Node
     private Fighter3D _attacker = null!;
     private Fighter3D _defender = null!;
     private float _introLeft = NetConfig.DuelIntroSeconds;
+    private float _time;
     private float _sinceSnapshot;
     private float _outcomeShownFor;
     private bool _finished;
@@ -150,6 +151,7 @@ public partial class ServerDuel : Node
 
     private void Step(float dt)
     {
+        _time += dt;
         if (_introLeft > 0f) _introLeft -= dt;
         else State.Tick(dt);
 
@@ -157,6 +159,7 @@ public partial class ServerDuel : Node
         {
             fighter.Bot?.Step(dt);
             if (fighter.Bot is not null) fighter.SyncFromBody();
+            fighter.History.Record(_time, fighter.Position.ToNumerics());
             if (fighter.Position.Y < BoardGeometry.FallHeight) State.Fall(fighter.Role);
         }
 
@@ -222,7 +225,7 @@ public partial class ServerDuel : Node
         if (ByPeer(peer) is { } fighter) State.SetTrigger(fighter.Role, held);
     }
 
-    public void OnFire(int peer, Vector3 origin, Vector3[] directions)
+    public void OnFire(int peer, Vector3 origin, Vector3[] ends, int hitMask)
     {
         if (ByPeer(peer) is not { } fighter) return;
         if (origin.DistanceTo(fighter.Eye) > NetConfig.MaxShotOriginError)
@@ -230,7 +233,40 @@ public partial class ServerDuel : Node
             GD.PushWarning($"[duel] rejected shot from {fighter.Role}: origin {origin} is {origin.DistanceTo(fighter.Eye):0.00} m from the known eye {fighter.Eye}");
             return;
         }
-        Fire(fighter, origin, directions);
+        FireAsSeen(fighter, origin, ends, hitMask);
+    }
+
+    /// <summary>
+    /// A player's shot: the client reports where its pellets ended and which ones hit the opponent as it
+    /// was drawn on screen. A claimed hit counts if the opponent really stood there within the last moments
+    /// and nothing solid lies between the muzzle and the hit point.
+    /// </summary>
+    private void FireAsSeen(Fighter3D shooter, Vector3 origin, Vector3[] ends, int hitMask)
+    {
+        var weapon = FighterClasses.For(shooter.Type).Weapon;
+        if (ends.Length == 0 || ends.Length > weapon.Pellets) return;
+        if (!State.TryFire(shooter.Role, FireTolerance)) return;
+
+        var target = Opponent(shooter);
+        var space = _world.GetWorld3D().DirectSpaceState;
+        var hits = 0;
+        for (var i = 0; i < ends.Length; i++)
+        {
+            if ((hitMask & (1 << i)) == 0) continue;
+            var end = ends[i];
+            if (origin.DistanceTo(end) > weapon.MaxRange + 1f) continue;
+            if (!target.History.Contains(end.ToNumerics(), _time, 0.45f + NetConfig.HitTolerance, target.Height)) continue;
+
+            // Walls and pieces still block: stop just short of the hit point so the target itself is not tested.
+            var direction = (end - origin).Normalized();
+            var clear = end - direction * 0.3f;
+            var blocked = space.IntersectRay(PhysicsRayQueryParameters3D.Create(origin, clear,
+                BoardGeometry.WorldLayer | BoardGeometry.PieceLayer, [shooter.Body.GetRid()]));
+            if (blocked.Count == 0) hits++;
+        }
+
+        _room.SendAll(MatchChannel.MethodName.ShotFired, (int)shooter.Role, origin, ends);
+        if (hits > 0) Damage(target.Role, weapon.Damage * hits);
     }
 
     public void OnReload(int peer)
@@ -251,6 +287,7 @@ public partial class ServerDuel : Node
 
     // ---------------------------------------------------------------- shared by players and bots
 
+    /// <summary>A shot resolved entirely on the server (the bot), raycasting against the current positions.</summary>
     /// <returns>Whether the weapon fired.</returns>
     public bool Fire(Fighter3D shooter, Vector3 origin, Vector3[] directions)
     {
@@ -350,6 +387,9 @@ public sealed class Fighter3D(DuelRole role, PieceType type, int peer, Collision
     public Vector3 Position { get; set; }
     public float Yaw { get; set; }
     public float Pitch { get; set; }
+
+    /// <summary>Recent positions, for checking hits the shooter saw with a delay.</summary>
+    public PoseHistory History { get; } = new(NetConfig.HitHistorySeconds);
 
     public Vector3 Eye => Position + Vector3.Up * Ballistics.EyeHeight(Height);
     public Vector3 Chest => Position + Vector3.Up * Ballistics.ChestHeight(Height);

@@ -285,7 +285,7 @@ public partial class MatchRoom : Node, IMatchServer
 
     public void OnDuelInput(int peer, Vector3 position, float yaw, float pitch) => _duel?.OnInput(peer, position, yaw, pitch);
     public void OnTrigger(int peer, bool held) => _duel?.OnTrigger(peer, held);
-    public void OnFire(int peer, Vector3 origin, Vector3[] directions) => _duel?.OnFire(peer, origin, directions);
+    public void OnFire(int peer, Vector3 origin, Vector3[] ends, int hitMask) => _duel?.OnFire(peer, origin, ends, hitMask);
     public void OnReload(int peer) => _duel?.OnReload(peer);
     public void OnDash(int peer) => _duel?.OnDash(peer);
     public void OnThrowGrenade(int peer, Vector3 origin, Vector3 velocity) => _duel?.OnThrowGrenade(peer, origin, velocity);

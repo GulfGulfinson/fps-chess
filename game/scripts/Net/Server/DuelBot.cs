@@ -148,7 +148,7 @@ public partial class DuelBot : CharacterBody3D
         _nextShotIn -= (float)GetPhysicsProcessDeltaTime();
         if (!sees || _visibleFor < _reactionSeconds || _nextShotIn > 0f) return;
 
-        var directions = Ballistics.ShotDirections(toTarget, _class.Weapon, zoomed: _class.ZoomFov is not null, _aimErrorDegrees);
+        var directions = Ballistics.ShotDirections(toTarget, _class.Weapon, aiming: _class.ZoomFov is not null, _aimErrorDegrees);
         if (_duel.Fire(_self, _self.Eye, directions)) _nextShotIn = _class.Weapon.FireInterval / _cadence;
     }
 
