@@ -20,7 +20,7 @@ public sealed class GameSession : IDisposable
     private TimeSpan _thinkingFor;
 
     public GameSession(GameSetup setup, Game? game = null, ChessClock? clock = null)
-        : this(setup, game, clock, new ChessAi(setup.AiLevel).ChooseMove, DefaultMinimumThinkTime)
+        : this(setup, game, clock, new ChessAi(setup.AiLevel, variant: setup.Variant).ChooseMove, DefaultMinimumThinkTime)
     {
     }
 

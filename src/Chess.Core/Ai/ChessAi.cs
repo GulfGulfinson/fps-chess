@@ -1,8 +1,11 @@
+using Chess.Core.Duels;
+
 namespace Chess.Core.Ai;
 
 /// <summary>
 /// Computer opponent: negamax search with alpha-beta pruning to a fixed depth (in plies),
 /// followed by a capture-only quiescence search so it does not stop in the middle of an exchange.
+/// In the duel variant the captures at the root are weighed by their chance of winning the duel.
 /// </summary>
 public sealed class ChessAi
 {
@@ -11,12 +14,14 @@ public sealed class ChessAi
     private const int MaxQuiescenceDepth = 8;
 
     private readonly Random _random;
+    private readonly GameVariant _variant;
 
-    public ChessAi(int depth, Random? random = null)
+    public ChessAi(int depth, Random? random = null, GameVariant variant = GameVariant.Classic)
     {
         if (depth is < GameSetup.MinAiLevel or > 8) throw new ArgumentOutOfRangeException(nameof(depth));
         Depth = depth;
         _random = random ?? Random.Shared;
+        _variant = variant;
     }
 
     public int Depth { get; }
@@ -35,7 +40,9 @@ public sealed class ChessAi
         foreach (var move in moves)
         {
             // Window starts one below the best score so ties come back exact and can be collected.
-            var score = -Negamax(position.Apply(move), Depth - 1, -Infinity, -(best - 1), 1, cancellationToken);
+            var score = _variant == GameVariant.Duel && position.IsCapture(move)
+                ? ExpectedCaptureScore(position, move, cancellationToken)
+                : -Negamax(position.Apply(move), Depth - 1, -Infinity, -(best - 1), 1, cancellationToken);
             if (score > best)
             {
                 best = score;
@@ -48,6 +55,25 @@ public sealed class ChessAi
             }
         }
         return bestMoves[_random.Next(bestMoves.Count)];
+    }
+
+    /// <summary>
+    /// A capture in the duel variant is a gamble: weigh the position after a won duel against the one after
+    /// a lost duel (the attacker removed) by the chance of winning. Deeper in the tree captures are assumed
+    /// to succeed, which keeps the search affordable.
+    /// </summary>
+    private int ExpectedCaptureScore(Position position, Move move, CancellationToken ct)
+    {
+        var duel = PendingDuel.Describe(position, move);
+        var p = DuelOdds.AttackerWinProbability(duel.Attacker.Type, duel.Defender.Type);
+
+        var won = -Negamax(position.Apply(move), Depth - 1, -Infinity, Infinity, 1, ct);
+        var failed = position.ApplyFailedCapture(move);
+        // Losing the duel can leave our own king open to capture, which ends the game if that duel is lost too.
+        var lost = failed.IsInCheck(position.SideToMove)
+            ? -MateScore / 2
+            : -Negamax(failed, Depth - 1, -Infinity, Infinity, 1, ct);
+        return (int)(p * won + (1 - p) * lost);
     }
 
     private static int Negamax(Position position, int depth, int alpha, int beta, int ply, CancellationToken ct)
