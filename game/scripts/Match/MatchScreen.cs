@@ -104,6 +104,14 @@ public partial class MatchScreen : Node3D, IMatchClient
     private int _lastCountdownSecond;
     private bool _announcedFight;
 
+    // This player's record in the current game, shown in the HUD and at the end.
+    private int _duelsWon;
+    private int _duelsLost;
+    private float _damageDealt;
+    private float _damageTaken;
+    private int _headshots;
+    private List<Piece> _startPieces = [];
+
     /// <param name="lanHint">Shown while waiting for an opponent when this player hosts a LAN game.</param>
     /// <param name="trainingCapture">In a training duel: the capture to play at once; the game ends with the duel.</param>
     public void Init(Main main, NetClient client, PieceColor myColor, string? lanHint, Move? trainingCapture)
@@ -230,6 +238,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         }
 
         _timed = _state.InitialMs is > 0;
+        _startPieces = Chess.Core.Position.FromFen(_state.StartFen, allowExposedKing: true).Pieces().Select(p => p.Piece).ToList();
         _whiteMs = _state.WhiteMs ?? 0;
         _blackMs = _state.BlackMs ?? 0;
 
@@ -297,6 +306,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         var played = PlayedMove.Describe(before, move, _game.SanMoves[^1], outcome >= 0 ? (DuelOutcome)outcome : null);
         Animate(played);
         RefreshMoveList();
+        _hud.SetPlayers(PlayersText());
         RefreshHighlights();
 
         if (_game.IsOver)
@@ -312,7 +322,8 @@ public partial class MatchScreen : Node3D, IMatchClient
             {
                 Input.MouseMode = Input.MouseModeEnum.Visible;
                 _gameOver.SetRematchText("Nochmal");
-                _gameOver.Open(won ? "Training: Du hast das Duell gewonnen!" : "Training: Das Duell ging verloren.");
+                _gameOver.Open((won ? "Training: Du hast das Duell gewonnen!" : "Training: Das Duell ging verloren.") +
+                               $"\n\n{DuelSummary()}");
             });
             return;
         }
@@ -388,7 +399,13 @@ public partial class MatchScreen : Node3D, IMatchClient
     {
         if (_phase is not (Phase.Duel or Phase.DuelIntro)) return;
         // Our own hits already showed a marker the moment we fired.
-        if ((DuelRole)role != _myRole) return;
+        if ((DuelRole)role != _myRole)
+        {
+            _damageDealt += amount;
+            if (headshot) _headshots++;
+            return;
+        }
+        _damageTaken += amount;
         _duelHud.DamageFlash();
         Sfx.Play(this, Sound.Hurt, headshot ? 0f : -4f);
         if (_fighter is not null && _opponent is not null)
@@ -438,6 +455,8 @@ public partial class MatchScreen : Node3D, IMatchClient
     {
         if (_phase is not (Phase.Duel or Phase.DuelIntro)) return;
         var won = (DuelOutcome)outcome == DuelOutcome.AttackerWon == (_myRole == DuelRole.Attacker);
+        if (won) _duelsWon++;
+        else _duelsLost++;
         _duelHud.ShowResult(won);
         Sfx.Play(this, won ? Sound.Win : Sound.Lose, pitchJitter: 0f);
         if (won && _opponent is not null)
@@ -712,7 +731,31 @@ public partial class MatchScreen : Node3D, IMatchClient
             var clock = _timed ? $"   {Texts.Clock(TimeSpan.FromMilliseconds(ms))}" : "";
             return $"{marker}{Texts.Color(color)}: {player.Name}{you}{clock}";
         }
-        return $"{Line(PieceColor.White, _state.White, _whiteMs)}\n{Line(PieceColor.Black, _state.Black, _blackMs)}";
+        var lines = $"{Line(PieceColor.White, _state.White, _whiteMs)}\n{Line(PieceColor.Black, _state.Black, _blackMs)}";
+        var lostWhite = Lost(PieceColor.White);
+        var lostBlack = Lost(PieceColor.Black);
+        if (lostWhite.Length + lostBlack.Length > 0) lines += $"\nGeschlagen:  Weiß {lostWhite}   Schwarz {lostBlack}";
+        if (_duelsWon + _duelsLost > 0) lines += $"\nDeine Duelle: {_duelsWon} gewonnen, {_duelsLost} verloren";
+        return lines;
+    }
+
+    private string DuelSummary()
+    {
+        if (_duelsWon + _duelsLost == 0) return "Keine Duelle in dieser Partie.";
+        return $"Duelle: {_duelsWon} gewonnen, {_duelsLost} verloren\n" +
+               $"Schaden: {_damageDealt:0} ausgeteilt, {_damageTaken:0} eingesteckt, {_headshots} Kopftreffer";
+    }
+
+    /// <summary>Pieces a side has lost so far, as glyphs ("♟♟♞"), from the starting position and the current one.</summary>
+    private string Lost(PieceColor color)
+    {
+        if (_game is null) return "";
+        var now = _game.Position.Pieces().Where(p => p.Piece.Color == color).Select(p => p.Piece).ToList();
+        var lost = Enum.GetValues<PieceType>()
+            .Where(t => t != PieceType.King)
+            .SelectMany(t => Enumerable.Repeat(Texts.Glyph(t),
+                Math.Max(0, _startPieces.Count(p => p.Color == color && p.Type == t) - now.Count(p => p.Type == t))));
+        return string.Concat(lost);
     }
 
     private void RefreshMoveList()
@@ -730,7 +773,7 @@ public partial class MatchScreen : Node3D, IMatchClient
             if (_game is not { IsOver: true } || _phase != Phase.Board) return;
             Input.MouseMode = Input.MouseModeEnum.Visible;
             _pause.Visible = false;
-            _gameOver.Open(Texts.Result(_game));
+            _gameOver.Open($"{Texts.Result(_game)}\n\n{DuelSummary()}");
         });
     }
 
