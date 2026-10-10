@@ -44,6 +44,7 @@ public partial class Capture : Node
         }
         _submit = args.GetValueOrDefault("submit");
         _open = args.GetValueOrDefault("open");
+        if (args.ContainsKey("colorblind")) UserPrefs.ColorblindMode = true;
         if (args.TryGetValue("graphics", out var graphics)) UserPrefs.Graphics = Enum.Parse<GraphicsLevel>(graphics, ignoreCase: true);
         if (args.TryGetValue("fire", out var fire)) _fireAt = double.Parse(fire, System.Globalization.CultureInfo.InvariantCulture);
 

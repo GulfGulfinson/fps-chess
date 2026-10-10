@@ -70,6 +70,20 @@ public static class UserPrefs
         set => WriteFloat("volume", value);
     }
 
+    /// <summary>Background music volume, 0 to 1, on top of the master volume.</summary>
+    public static float MusicVolume
+    {
+        get => Math.Clamp(ReadFloat("music", 0.5f), 0f, 1f);
+        set => WriteFloat("music", value);
+    }
+
+    /// <summary>Blue and orange instead of green and red for moves and captures.</summary>
+    public static bool ColorblindMode
+    {
+        get => Read("colorblind", "false") == "true";
+        set => Write("colorblind", value ? "true" : "false");
+    }
+
     public static bool Muted
     {
         get => Read("muted", "false") == "true";

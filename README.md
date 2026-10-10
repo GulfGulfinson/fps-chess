@@ -99,6 +99,14 @@ sofort, ohne Schachpartie drumherum. Gut zum Üben und um die Figuren kennenzule
 Der Computer berücksichtigt bei FPS Chess das Duellrisiko: Ein Schlagzug zählt für ihn nur so viel wie sein
 erwarteter Wert aus Siegchance (aus den Klassenwerten) und dem, was bei einer Niederlage verloren geht.
 
+### Komfort
+
+- Fährt die Maus auf dem Brett über ein Ziel, zeigt das Spiel bei Schlagzügen die Siegchance im Duell (dieselbe
+  Schätzung, mit der der Computer spielt) und sonst die Klasse der Figur.
+- "Statistik" im Hauptmenü zählt Partien, Duelle, Kopftreffer, Schaden und zeigt Lieblings- und beste Figur.
+- Jeder Raum hat eigene, im Code erzeugte Hintergrundmusik, im Duell leiser (eigener Regler "Musik").
+- Farbenblind-Modus in den Einstellungen: Blau und Orange statt Grün und Rot.
+
 ### Grafik
 
 Im Hauptmenü unter "Grafik (FPS Chess)": **Niedrig** rendert die 3D-Szene mit 60 % der Auflösung (hochskaliert mit

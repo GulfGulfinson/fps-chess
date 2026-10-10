@@ -50,6 +50,12 @@ public partial class SettingsPanel : Control
             UserPrefs.ApplyAudio();
         });
 
+        SliderRow(grid, "Musik", 0, 1, 0.05, UserPrefs.MusicVolume, v => $"{v:P0}", v =>
+        {
+            UserPrefs.MusicVolume = (float)v;
+            Changed?.Invoke();
+        });
+
         grid.AddChild(UiTheme.Label("Ton aus", 18, UiTheme.Muted));
         var mute = new CheckButton { ButtonPressed = UserPrefs.Muted };
         mute.Toggled += on =>
@@ -59,6 +65,16 @@ public partial class SettingsPanel : Control
         };
         grid.AddChild(mute);
         grid.AddChild(new Control());
+
+        grid.AddChild(UiTheme.Label("Farbenblind-Modus", 18, UiTheme.Muted));
+        var colorblind = new CheckButton { ButtonPressed = UserPrefs.ColorblindMode };
+        colorblind.Toggled += on =>
+        {
+            UserPrefs.ColorblindMode = on;
+            Changed?.Invoke();
+        };
+        grid.AddChild(colorblind);
+        grid.AddChild(UiTheme.Label("Blau/Orange statt Grün/Rot", 14, UiTheme.Muted));
 
         grid.AddChild(UiTheme.Label("Grafik", 18, UiTheme.Muted));
         var graphics = new OptionButton { CustomMinimumSize = new Vector2(300, 44) };

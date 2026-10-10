@@ -91,6 +91,8 @@ public partial class MatchScreen : Node3D, IMatchClient
     private Node3D? _attackArrow;
     private VersusCard _versus = null!;
     private SettingsPanel _settings = null!;
+    private AudioStreamPlayer? _music;
+    private Tween? _musicTween;
     private int _duelCounter;
     private float _serverAttackerHealth;
     private float _serverDefenderHealth;
@@ -187,7 +189,13 @@ public partial class MatchScreen : Node3D, IMatchClient
         };
         _settings.Closed += () => _pause.Visible = true;
         // A new field of view applies at once; sensitivity is read on every mouse movement anyway.
-        _settings.Changed += () => _fighter?.SetZoom(_zoomed);
+        _settings.Changed += () =>
+        {
+            _fighter?.SetZoom(_zoomed);
+            SetMusicLevel(_phase == Phase.Board, fadeSeconds: 0f);
+            _highlightMaterials.Clear();
+            RefreshHighlights();
+        };
 
         _promotion = new PromotionPicker();
         layer.AddChild(_promotion);
@@ -198,6 +206,30 @@ public partial class MatchScreen : Node3D, IMatchClient
         layer.AddChild(_gameOver);
         _gameOver.RematchRequested += RequestRematch;
         _gameOver.MenuRequested += () => _main.ShowMenu();
+    }
+
+    private void StartMusic(ArenaThemeId theme)
+    {
+        _music = new AudioStreamPlayer { Stream = MusicBank.For(theme), VolumeDb = -80f };
+        AddChild(_music);
+        _music.Play();
+        SetMusicLevel(board: true, fadeSeconds: 2f);
+    }
+
+    /// <summary>Full level on the board, much quieter during a duel so shots and steps stay clear.</summary>
+    private void SetMusicLevel(bool board, float fadeSeconds)
+    {
+        if (_music is null) return;
+        var level = UserPrefs.MusicVolume * (board ? 1f : 0.35f);
+        var db = level <= 0.001f ? -80f : Mathf.LinearToDb(level) - 10f;
+        _musicTween?.Kill();
+        if (fadeSeconds <= 0f)
+        {
+            _music.VolumeDb = db;
+            return;
+        }
+        _musicTween = CreateTween();
+        _musicTween.TweenProperty(_music, "volume_db", db, fadeSeconds);
     }
 
     /// <summary>Against the computer a new local game starts; online both players have to agree.</summary>
@@ -250,6 +282,7 @@ public partial class MatchScreen : Node3D, IMatchClient
             _built = true;
             var theme = Enum.TryParse<ArenaThemeId>(_state.Theme, out var id) ? id : ArenaThemeId.Library;
             _table = ArenaBuilder.Build(_world, theme, visuals: true);
+            StartMusic(theme);
             BuildOverlays();
             _hud.ShowBanner(ArenaTheme.Get(theme).Name, UiTheme.Accent);
         }
@@ -657,7 +690,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         {
             var duel = PendingDuel.Describe(position, capture);
             var chance = DuelOdds.AttackerWinProbability(duel.Attacker.Type, duel.Defender.Type);
-            var color = chance >= 0.55f ? new Color("7dff9b") : chance >= 0.4f ? new Color("ffd36b") : new Color("ff6a5f");
+            var color = chance >= 0.55f ? UiTheme.Good : chance >= 0.4f ? new Color("ffd36b") : UiTheme.Bad;
             return ($"Siegchance etwa {chance:P0}: {Texts.Piece(duel.Attacker.Type)} gegen {Texts.Piece(duel.Defender.Type)}. " +
                     $"Verlierst du, ist {Texts.Your(duel.Attacker.Type)} weg.", color);
         }
@@ -915,10 +948,10 @@ public partial class MatchScreen : Node3D, IMatchClient
             Highlight.Check => new Color(1f, 0.1f, 0.1f, 0.65f),
             Highlight.Hover => new Color(1f, 1f, 1f, 0.25f),
             Highlight.Selected => new Color(1f, 0.78f, 0.25f, 0.6f),
-            Highlight.Move => new Color(0.25f, 0.95f, 0.45f, 0.45f),
-            Highlight.MoveHover => new Color(0.45f, 1f, 0.6f, 0.8f),
-            Highlight.Capture => new Color(1f, 0.25f, 0.2f, 0.55f),
-            _ => new Color(1f, 0.45f, 0.35f, 0.9f),
+            Highlight.Move => UiTheme.Good with { A = 0.45f },
+            Highlight.MoveHover => UiTheme.Good.Lightened(0.25f) with { A = 0.8f },
+            Highlight.Capture => UiTheme.Bad with { A = 0.55f },
+            _ => UiTheme.Bad.Lightened(0.2f) with { A = 0.9f },
         };
         var material = new StandardMaterial3D
         {
@@ -968,6 +1001,7 @@ public partial class MatchScreen : Node3D, IMatchClient
         _world.AddChild(_attackArrow);
         if (_actors.TryGetValue(attackerSquare, out var lunging)) Lunge(lunging, defenderAt);
         _hud.ShowBanner(Texts.AttackAnnouncement(attacker, defender, defenderSquare, _myColor), new Color("ff6a4f"));
+        SetMusicLevel(board: false, fadeSeconds: 2f);
         Sfx.Play(this, Sound.Capture, pitchJitter: 0f);
         _duelHeadshotsNow = 0;
         _duelDamageNow = 0f;
@@ -1302,6 +1336,7 @@ public partial class MatchScreen : Node3D, IMatchClient
             _hiddenActors.Clear();
             _hud.Visible = true;
             _phase = Phase.Board;
+            SetMusicLevel(board: true, fadeSeconds: 2f);
             while (_afterDuel.Count > 0 && _phase == Phase.Board) _afterDuel.Dequeue()();
             RefreshHighlights();
         }));

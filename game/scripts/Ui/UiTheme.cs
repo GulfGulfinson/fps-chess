@@ -13,6 +13,10 @@ public static class UiTheme
     public static readonly Color Muted = new("9aa0aa");
     public static readonly Color Danger = new("d9534f");
 
+    /// <summary>"Good" and "bad" signal colours; blue and orange in colourblind mode instead of green and red.</summary>
+    public static Color Good => App.UserPrefs.ColorblindMode ? new Color("5ab4ff") : new Color("7dff9b");
+    public static Color Bad => App.UserPrefs.ColorblindMode ? new Color("ff9d2e") : new Color("ff6a5f");
+
     public static readonly Color LightSquare = new("ebd9b4");
     public static readonly Color DarkSquare = new("b07d52");
 

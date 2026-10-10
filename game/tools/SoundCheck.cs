@@ -32,6 +32,12 @@ public partial class SoundCheck : Node
             GD.Print($"[sound] {sound,-13} {data.Length / 2f / wav.MixRate:0.00} s  peak {peak:0.00}  rms {rms:0.000}");
             if (outDir is not null) wav.SaveToWav($"{outDir}/{sound}.wav");
         }
+        foreach (var theme in Enum.GetValues<FpsChess.Arena.ArenaThemeId>())
+        {
+            var music = MusicBank.For(theme);
+            GD.Print($"[music] {theme,-11} {music.Data.Length / 2f / music.MixRate:0.0} s, loop {music.LoopMode}");
+            if (outDir is not null) music.SaveToWav($"{outDir}/Music-{theme}.wav");
+        }
         GetTree().Quit();
     }
 }
