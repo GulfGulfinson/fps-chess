@@ -13,7 +13,11 @@ public sealed record WeaponStats(
     int Pellets = 1,
     float MaxRange = 300f,
     float SpinUpSeconds = 0f,
-    float? ZoomedSpreadDegrees = null);
+    float? ZoomedSpreadDegrees = null)
+{
+    /// <summary>Aiming down the sights halves the spread; a scope removes it entirely.</summary>
+    public float SpreadFor(bool aiming) => aiming ? ZoomedSpreadDegrees ?? SpreadDegrees / 2f : SpreadDegrees;
+}
 
 public sealed record DashPerk(float Distance, float Cooldown);
 
@@ -40,25 +44,27 @@ public sealed record FighterClass(
 
 public static class FighterClasses
 {
+    // Balanced to a band (see ClassesStayWithinTheBalanceBand): 100 to 150 health, 55 to 110 damage per second,
+    // so the roles differ but every piece can win a duel.
     private static readonly Dictionary<PieceType, FighterClass> Classes = new()
     {
-        [PieceType.Pawn] = new(PieceType.Pawn, "Soldat", 100, 1f, 1f,
-            new WeaponStats("Halbautomatik-Gewehr", 22, 0.25f, 12, 1.6f, 1.0f)),
+        [PieceType.Pawn] = new(PieceType.Pawn, "Soldat", 110, 1f, 1f,
+            new WeaponStats("Halbautomatik-Gewehr", 18, 0.2f, 15, 1.6f, 1.0f)),
         [PieceType.Knight] = new(PieceType.Knight, "Reiter", 120, 1f, 1f,
-            new WeaponStats("Schrotflinte", 12, 0.9f, 6, 2.2f, 7f, Pellets: 8, MaxRange: 25f),
+            new WeaponStats("Schrotflinte", 11, 0.85f, 6, 2.2f, 6f, Pellets: 8, MaxRange: 20f),
             DoubleJump: true),
-        [PieceType.Bishop] = new(PieceType.Bishop, "Scharfschütze", 90, 1f, 1f,
-            new WeaponStats("Scharfschützengewehr", 75, 1.4f, 5, 2.5f, 3f, ZoomedSpreadDegrees: 0f),
+        [PieceType.Bishop] = new(PieceType.Bishop, "Scharfschütze", 100, 1f, 1f,
+            new WeaponStats("Scharfschützengewehr", 80, 1.25f, 5, 2.4f, 3f, ZoomedSpreadDegrees: 0f),
             ZoomFov: 30f),
-        [PieceType.Rook] = new(PieceType.Rook, "Bollwerk", 200, 0.75f, 0.75f,
-            new WeaponStats("Minigun", 9, 0.07f, 150, 3.5f, 2.5f, SpinUpSeconds: 0.8f)),
-        [PieceType.Queen] = new(PieceType.Queen, "Kommandantin", 160, 1f, 1f,
-            new WeaponStats("Sturmgewehr", 14, 0.1f, 30, 2.0f, 1.5f),
+        [PieceType.Rook] = new(PieceType.Rook, "Bollwerk", 150, 0.8f, 0.85f,
+            new WeaponStats("Minigun", 7, 0.075f, 150, 3.5f, 2.5f, SpinUpSeconds: 0.8f)),
+        [PieceType.Queen] = new(PieceType.Queen, "Kommandantin", 140, 1f, 1f,
+            new WeaponStats("Sturmgewehr", 11, 0.11f, 30, 2.0f, 1.5f),
             Dash: new DashPerk(10f, 3f),
-            Grenades: new GrenadePerk(2, 70f, 4f, 2f)),
-        [PieceType.King] = new(PieceType.King, "Monarch", 140, 1f, 1f,
-            new WeaponStats("Revolver", 45, 0.6f, 6, 2.4f, 0.5f),
-            Regeneration: new RegenerationPerk(3f, 5f)),
+            Grenades: new GrenadePerk(2, 60f, 4f, 2f)),
+        [PieceType.King] = new(PieceType.King, "Monarch", 130, 1f, 1f,
+            new WeaponStats("Revolver", 40, 0.55f, 6, 2.4f, 0.5f),
+            Regeneration: new RegenerationPerk(2.5f, 6f)),
     };
 
     public static FighterClass For(PieceType piece) => Classes[piece];

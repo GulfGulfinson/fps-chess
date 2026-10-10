@@ -18,9 +18,9 @@ public class DuelStateTests
     {
         var duel = new DuelState(PieceType.Rook, PieceType.Bishop);
 
-        Assert.Equal(200, duel.Attacker.Health);
+        Assert.Equal(150, duel.Attacker.Health);
         Assert.Equal(150, duel.Attacker.Ammo);
-        Assert.Equal(90, duel.Defender.Health);
+        Assert.Equal(100, duel.Defender.Health);
         Assert.Equal(DuelPhase.Countdown, duel.Phase);
     }
 
@@ -42,9 +42,9 @@ public class DuelStateTests
 
         Assert.True(duel.TryFire(DuelRole.Attacker));
         Assert.False(duel.TryFire(DuelRole.Attacker));
-        duel.Tick(0.25f);
+        duel.Tick(0.2f);
         Assert.True(duel.TryFire(DuelRole.Attacker));
-        Assert.Equal(10, duel.Attacker.Ammo);
+        Assert.Equal(13, duel.Attacker.Ammo);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class DuelStateTests
     {
         var duel = Fighting();
         duel.TryFire(DuelRole.Attacker);
-        duel.Tick(0.22f);
+        duel.Tick(0.17f);
 
         Assert.False(duel.TryFire(DuelRole.Attacker));
         Assert.True(duel.TryFire(DuelRole.Attacker, tolerance: 0.05f));
@@ -62,16 +62,16 @@ public class DuelStateTests
     public void EmptyMagazineReloadsAutomatically()
     {
         var duel = Fighting();
-        for (var i = 0; i < 12; i++)
+        for (var i = 0; i < 15; i++)
         {
             Assert.True(duel.TryFire(DuelRole.Attacker));
-            duel.Tick(0.25f);
+            duel.Tick(0.2f);
         }
 
         Assert.False(duel.TryFire(DuelRole.Attacker));
         Assert.True(duel.Attacker.IsReloading);
         duel.Tick(1.6f);
-        Assert.Equal(12, duel.Attacker.Ammo);
+        Assert.Equal(15, duel.Attacker.Ammo);
         Assert.True(duel.TryFire(DuelRole.Attacker));
     }
 
@@ -108,8 +108,8 @@ public class DuelStateTests
 
         var applied = duel.ApplyDamage(DuelRole.Defender, 100);
 
-        Assert.Equal(75, applied);
-        Assert.Equal(125, duel.Defender.Health);
+        Assert.Equal(85, applied, 3);
+        Assert.Equal(65, duel.Defender.Health, 3);
     }
 
     [Fact]
@@ -140,11 +140,11 @@ public class DuelStateTests
         var duel = Fighting(PieceType.Pawn, PieceType.King);
         duel.ApplyDamage(DuelRole.Defender, 40);
 
-        duel.Tick(2.9f);
-        Assert.Equal(100, duel.Defender.Health, 3);
+        duel.Tick(2.4f);
+        Assert.Equal(90, duel.Defender.Health, 3);
         duel.Tick(2.1f);
 
-        Assert.Equal(110, duel.Defender.Health, 1);
+        Assert.Equal(102, duel.Defender.Health, 1);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class DuelStateTests
 
         duel.Tick(20f);
 
-        Assert.Equal(140, duel.Defender.Health);
+        Assert.Equal(130, duel.Defender.Health);
     }
 
     [Fact]
@@ -197,8 +197,8 @@ public class DuelStateTests
     }
 
     [Theory]
-    [InlineData(0f, 70f)]
-    [InlineData(2f, 35f)]
+    [InlineData(0f, 60f)]
+    [InlineData(2f, 30f)]
     [InlineData(4f, 0f)]
     [InlineData(9f, 0f)]
     public void GrenadeDamageFallsOffLinearly(float distance, float expected)
@@ -221,12 +221,39 @@ public class DuelStateTests
     }
 
     [Fact]
+    public void ClassesStayWithinTheBalanceBand()
+    {
+        // Keeps duels winnable for every piece: no class may be a tank or a glass cannon by a wide margin.
+        foreach (var type in Enum.GetValues<PieceType>())
+        {
+            var fighter = FighterClasses.For(type);
+            var weapon = fighter.Weapon;
+            var damagePerSecond = weapon.Damage * weapon.Pellets / weapon.FireInterval;
+            var effectiveHealth = fighter.MaxHealth / fighter.DamageTakenMultiplier;
+            Assert.InRange(fighter.MaxHealth, 100, 150);
+            Assert.InRange(effectiveHealth, 100, 180);
+            Assert.InRange(damagePerSecond, 55, 110);
+        }
+    }
+
+    [Fact]
+    public void AimingHalvesTheSpreadUnlessTheWeaponHasAScope()
+    {
+        var rifle = FighterClasses.For(PieceType.Pawn).Weapon;
+        var sniper = FighterClasses.For(PieceType.Bishop).Weapon;
+
+        Assert.Equal(rifle.SpreadDegrees, rifle.SpreadFor(aiming: false));
+        Assert.Equal(rifle.SpreadDegrees / 2f, rifle.SpreadFor(aiming: true));
+        Assert.Equal(0f, sniper.SpreadFor(aiming: true));
+    }
+
+    [Fact]
     public void ClassPerksMatchTheDesign()
     {
         Assert.True(FighterClasses.For(PieceType.Knight).DoubleJump);
         Assert.NotNull(FighterClasses.For(PieceType.Bishop).ZoomFov);
         Assert.Equal(8, FighterClasses.For(PieceType.Knight).Weapon.Pellets);
-        Assert.Equal(0.75f, FighterClasses.For(PieceType.Rook).SpeedMultiplier);
+        Assert.Equal(0.8f, FighterClasses.For(PieceType.Rook).SpeedMultiplier);
         Assert.NotNull(FighterClasses.For(PieceType.King).Regeneration);
     }
 }
